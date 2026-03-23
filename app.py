@@ -7,12 +7,10 @@ import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
-import requests as req_lib
 from flask import Flask, jsonify, request, render_template
 
 from droptimizer import (
     RAIDBOTS_BASE,
-    RAIDBOTS_HEADERS,
     apply_talent,
     build_payload,
     find_talent_builds,
@@ -22,6 +20,7 @@ from droptimizer import (
     poll_job,
     submit_job,
 )
+from raidbots_session import make_raidbots_session
 from qe_sim import is_healer, run_qe_upgradefinder
 
 app = Flask(__name__)
@@ -141,13 +140,6 @@ _SPEC_ID_TO_NAME: dict[int, str] = {
 _VALID_SPEC_NAMES: set[str] = set(_SPEC_ID_TO_NAME.values())
 
 
-def _make_session(raidsid: str) -> req_lib.Session:
-    s = req_lib.Session()
-    s.headers.update(RAIDBOTS_HEADERS)
-    if raidsid:
-        s.cookies.set("raidsid", raidsid, domain="www.raidbots.com")
-    return s
-
 
 def _run_one(job: dict, char: dict, raidsid: str,
              encounter_items: list, instances: list, frontend_version: str) -> None:
@@ -180,7 +172,7 @@ def _run_one(job: dict, char: dict, raidsid: str,
         return
 
     # ── DPS / Tank: use Raidbots Droptimizer ────────────────────────────────
-    session = _make_session(raidsid)
+    session = make_raidbots_session(raidsid)
 
     _update_job(jid, status="fetching")
     _log(f"[{tag}] Fetching character from armory...")
@@ -243,7 +235,7 @@ def _run_one(job: dict, char: dict, raidsid: str,
 
 def _run(jobs: list, chars_by_id: dict, raidsid: str) -> None:
     try:
-        init_session = _make_session(raidsid)
+        init_session = make_raidbots_session(raidsid)
 
         _log("Fetching static data...")
         static_hash, frontend_version = get_site_versions(init_session)
@@ -398,11 +390,7 @@ def api_get_ilvl(char_id):
         return jsonify({"ilvl": char["ilvl"]})
     # Fetch from armory
     try:
-        session = req_lib.Session()
-        session.headers.update(RAIDBOTS_HEADERS)
-        raidsid = load_raidsid()
-        if raidsid:
-            session.cookies.set("raidsid", raidsid, domain="www.raidbots.com")
+        session = make_raidbots_session(load_raidsid())
         data = fetch_character(session, char["region"], char["realm"], char["name"])
         ilvl = _calc_ilvl(data.get("items", {}))
         if ilvl:

@@ -695,10 +695,8 @@ def main() -> None:
         sys.exit(1)
 
     # Build a shared session with cookies
-    session = requests.Session()
-    session.headers.update(RAIDBOTS_HEADERS)
-    if raidsid:
-        session.cookies.set("raidsid", raidsid, domain="www.raidbots.com")
+    from raidbots_session import make_raidbots_session
+    session = make_raidbots_session(raidsid)
 
     # Fetch static data once
     static_hash, frontend_version = get_site_versions(session)

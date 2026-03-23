@@ -8,14 +8,14 @@ from pathlib import Path
 
 import discord
 from discord import app_commands
-import requests as req_lib
 
 from droptimizer import (
-    RAIDBOTS_BASE, RAIDBOTS_HEADERS,
+    RAIDBOTS_BASE,
     apply_talent, build_payload, find_talent_builds,
     fetch_character, fetch_encounter_items,
     get_site_versions, poll_job, submit_job,
 )
+from raidbots_session import make_raidbots_session
 from qe_sim import is_healer, run_qe_upgradefinder
 
 CONFIG_PATH = Path(__file__).parent / "config.json"
@@ -77,13 +77,6 @@ def _parse_simc(simc: str) -> dict:
     return result
 
 
-def _make_session(raidsid: str) -> req_lib.Session:
-    s = req_lib.Session()
-    s.headers.update(RAIDBOTS_HEADERS)
-    if raidsid:
-        s.cookies.set("raidsid", raidsid, domain="www.raidbots.com")
-    return s
-
 
 def _run_sims(simc: str, raidsid: str) -> list[dict]:
     """
@@ -126,7 +119,7 @@ def _run_sims(simc: str, raidsid: str) -> list[dict]:
         return results
 
     # ── DPS / Tank: use Raidbots Droptimizer ────────────────────────────────
-    init_session = _make_session(raidsid)
+    init_session = make_raidbots_session(raidsid)
     static_hash, frontend_version = get_site_versions(init_session)
     encounter_items = fetch_encounter_items(init_session, static_hash)
     instances = init_session.get(
@@ -143,7 +136,7 @@ def _run_sims(simc: str, raidsid: str) -> list[dict]:
     ]
 
     def _one(build_label: str, talent_code: str | None, difficulty: str) -> dict:
-        s = _make_session(raidsid)
+        s = make_raidbots_session(raidsid)
         sim_simc = apply_talent(simc_final, talent_code) if talent_code else simc_final
         cfg_wrap = {
             "character":   {"name": info["name"], "realm": info["realm"], "region": info["region"]},
