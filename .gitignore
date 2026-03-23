@@ -9,6 +9,9 @@ characters.json
 payload_debug.json
 droptimizer.log
 
+# Persisted run state
+last_run.json
+
 # Python
 __pycache__/
 *.pyc

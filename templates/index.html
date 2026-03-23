@@ -79,9 +79,10 @@ input[type=checkbox] { accent-color: var(--accent); width: 15px; height: 15px; c
 .badge-running  { background: #1e2a3e; color: var(--blue); }
 .badge-done     { background: #1a3028; color: var(--green); }
 .badge-failed   { background: #3e1e1e; color: var(--red); }
-.url-chip { background: var(--surf2); border: 1px solid var(--border); border-radius: 6px; padding: 5px 10px; font-size: 12px; color: var(--acc-h); cursor: pointer; transition: all .15s; max-width: 240px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.url-chip:hover { border-color: var(--accent); background: var(--border); }
-.url-chip::before { content: '⎘ '; }
+.url-actions { display: flex; gap: 6px; align-items: center; }
+.url-btn { background: var(--surf2); border: 1px solid var(--border); border-radius: 6px; padding: 5px 10px; font-size: 12px; color: var(--acc-h); cursor: pointer; transition: all .15s; white-space: nowrap; text-decoration: none; display: inline-flex; align-items: center; gap: 4px; }
+.url-btn:hover { border-color: var(--accent); background: var(--border); color: var(--text); }
+.sim-preview { height: 56px; width: auto; border-radius: 6px; border: 1px solid var(--border); flex-shrink: 0; }
 
 /* Log */
 .log-wrap { margin-top: 4px; }
@@ -216,6 +217,12 @@ input[type=checkbox] { accent-color: var(--accent); width: 15px; height: 15px; c
         <input id="f-crafted-stats" type="text" placeholder="36/49">
       </div>
     </div>
+    <div style="margin-top:14px">
+      <label style="display:flex;align-items:center;gap:8px;font-size:12px;color:var(--sub);cursor:pointer">
+        <input type="checkbox" id="f-exclude-updates">
+        Exclude from gear updates when another profile with the same character is saved
+      </label>
+    </div>
     <div class="modal-actions">
       <button class="btn-cancel" onclick="closeModal()">Cancel</button>
       <button class="btn-primary" onclick="saveChar()">Save</button>
@@ -235,6 +242,11 @@ let logOpen = false;
 document.addEventListener('DOMContentLoaded', async () => {
   await loadChars();
   await refreshSettings();
+  // Restore last run results
+  const s = await (await fetch('/api/status')).json();
+  renderJobs(s.jobs);
+  renderLog(s.log);
+  if (s.running) startPolling();
 });
 
 // ── Characters ────────────────────────────────────────────────────────────────
@@ -245,21 +257,56 @@ async function loadChars() {
   renderSelector();
 }
 
+const GEAR_SLOTS = new Set(['head','neck','shoulder','back','chest','wrist','hands','waist','legs','feet','finger1','finger2','trinket1','trinket2','main_hand','off_hand']);
+
+function avgIlvl(simc) {
+  if (!simc) return null;
+  const ilvls = [];
+  for (const line of simc.split(/\r?\n/)) {
+    const slotMatch = line.match(/^(\w+)\s*=/);
+    if (!slotMatch || !GEAR_SLOTS.has(slotMatch[1])) continue;
+    const ilvlMatch = line.match(/\bilvl\s*=\s*(\d+)/);
+    if (ilvlMatch) ilvls.push(parseInt(ilvlMatch[1]));
+  }
+  if (!ilvls.length) return null;
+  return Math.round(ilvls.reduce((a, b) => a + b, 0) / ilvls.length);
+}
+
 function renderCharList() {
   const el = document.getElementById('chars-list');
   if (!chars.length) {
     el.innerHTML = '<div style="color:var(--sub);font-size:13px;padding:8px 8px 4px">No characters yet.</div>';
     return;
   }
-  el.innerHTML = chars.map(c => `
+  el.innerHTML = chars.map(c => {
+    const ilvl = c.ilvl || avgIlvl(c.simc_string);
+    const ilvlBadge = ilvl
+      ? ` <span style="color:var(--sub);font-size:11px;font-weight:400">· ${ilvl} ilvl</span>`
+      : ` <span id="ilvl-${c.id}" style="color:var(--sub);font-size:11px;font-weight:400"></span>`;
+    return `
     <div class="char-card">
       <div class="char-info">
-        <div class="char-name">${c.name} <span style="color:var(--accent);font-size:12px">${c.spec}</span></div>
+        <div class="char-name">${c.name} <span style="color:var(--accent);font-size:12px">${c.spec}</span>${ilvlBadge}</div>
         <div class="char-meta">${c.region.toUpperCase()} / ${c.realm}</div>
       </div>
       <button class="icon-btn" title="Edit" onclick="openModal('${c.id}')">✎</button>
       <button class="icon-btn del" title="Delete" onclick="deleteChar('${c.id}')">✕</button>
-    </div>`).join('');
+    </div>`;
+  }).join('');
+
+  // Fetch ilvl from armory for characters that don't have it cached yet
+  chars.forEach(c => {
+    if (c.ilvl || avgIlvl(c.simc_string)) return;
+    fetch(`/api/ilvl/${c.id}`)
+      .then(r => r.json())
+      .then(d => {
+        if (!d.ilvl) return;
+        c.ilvl = d.ilvl;
+        const span = document.getElementById(`ilvl-${c.id}`);
+        if (span) span.textContent = `· ${d.ilvl} ilvl`;
+      })
+      .catch(() => {});
+  });
 }
 
 function renderSelector() {
@@ -306,10 +353,10 @@ const SPEC_IDS = {
   warlock:      { affliction:265, demonology:266, destruction:267 },
   monk:         { brewmaster:268, windwalker:269, mistweaver:270 },
   druid:        { balance:102, feral:103, guardian:104, restoration:105 },
-  'demon_hunter':{ havoc:577, vengeance:581 },
+  'demon_hunter':{ havoc:577, vengeance:581, devourer:1480 },
   evoker:       { devastation:1467, preservation:1468, augmentation:1473 },
   'death knight':{ blood:250, frost:251, unholy:252 },
-  'demon hunter':{ havoc:577, vengeance:581 },
+  'demon hunter':{ havoc:577, vengeance:581, devourer:1480 },
 };
 
 function parseSimc() {
@@ -319,10 +366,18 @@ function parseSimc() {
   const lines = raw.split(/\r?\n/);
   let charName = null, charClass = null, region = null, realm = null, spec = null;
 
-  // First non-empty line: class="Name"
+  // Find class identifier line (e.g. demon_hunter="Name") — skip copy= / profileset= lines
   for (const line of lines) {
     const m = line.match(/^(\w[\w\s]*)="([^"]+)"/);
-    if (m) { charClass = m[1].trim().toLowerCase(); charName = m[2].trim(); break; }
+    if (m) {
+      const cls = m[1].trim().toLowerCase();
+      const clsNorm = cls.replace(/ /g, '_');
+      if (SPEC_IDS[cls] || SPEC_IDS[clsNorm]) {
+        charClass = clsNorm;
+        charName = m[2].trim();
+        break;
+      }
+    }
   }
 
   for (const line of lines) {
@@ -366,6 +421,7 @@ function openModal(id = null) {
   document.getElementById('f-spec-id').value      = c?.spec_id       ?? '';
   document.getElementById('f-loot-spec-id').value = c?.loot_spec_id  ?? '';
   document.getElementById('f-crafted-stats').value = c?.crafted_stats ?? '36/49';
+  document.getElementById('f-exclude-updates').checked = c?.exclude_from_item_updates ?? false;
   document.getElementById('modal-bg').classList.add('open');
   document.getElementById('f-name').focus();
 }
@@ -384,16 +440,42 @@ async function saveChar() {
     realm:         document.getElementById('f-realm').value.trim(),
     spec_id:       specId || 63,
     loot_spec_id:  parseInt(document.getElementById('f-loot-spec-id').value) || specId || 63,
-    crafted_stats: document.getElementById('f-crafted-stats').value.trim() || '36/49',
-    simc_string:   document.getElementById('f-simc').value.trim(),
+    crafted_stats:              document.getElementById('f-crafted-stats').value.trim() || '36/49',
+    simc_string:                document.getElementById('f-simc').value.trim(),
+    exclude_from_item_updates:  document.getElementById('f-exclude-updates').checked,
   };
   if (!char.name || !char.spec || !char.simc_string) {
     showToast('Name, spec and SimC string are required', true);
     return;
   }
-  await fetch('/api/characters', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(char) });
+
+  // Validate SimC string matches the profile name and spec
+  const simcLines = char.simc_string.split(/\r?\n/);
+  let simcName = null, simcSpec = null;
+  for (const line of simcLines) {
+    const m = line.match(/^[\w][\w\s]*="([^"]+)"/);
+    if (m) { simcName = m[1].trim(); break; }
+  }
+  for (const line of simcLines) {
+    const kv = line.match(/^spec\s*=\s*(\S+)/);
+    if (kv) { simcSpec = kv[1].trim().toLowerCase(); break; }
+  }
+  if (simcName && simcName.toLowerCase() !== char.name.toLowerCase()) {
+    showToast(`SimC mismatch: string is for "${simcName}", profile is "${char.name}"`, true);
+    return;
+  }
+  if (simcSpec && simcSpec !== char.spec.toLowerCase()) {
+    showToast(`SimC mismatch: string is ${simcSpec}, profile spec is ${char.spec}`, true);
+    return;
+  }
+
+  const resp = await fetch('/api/characters', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(char) });
+  const result = await resp.json();
   closeModal();
   await loadChars();
+  if (result.propagated?.length) {
+    showToast(`Gear synced to: ${result.propagated.join(', ')}`);
+  }
 }
 
 async function deleteChar(id) {
@@ -471,7 +553,11 @@ function renderJobs(jobs) {
     <div class="job-row">
       <span class="job-label">${j.label}</span>
       <span class="badge badge-${j.status}">${statusLabel(j.status)}</span>
-      ${j.url ? `<span class="url-chip" title="Click to copy" onclick="copyUrl('${j.url}')">${j.url}</span>` : ''}
+      ${j.sim_id && j.status === 'done' ? `<img class="sim-preview" src="https://www.raidbots.com/simbot/report/${j.sim_id}/preview.png" alt="preview" title="Sim preview" onerror="this.style.display='none'">` : ''}
+      ${j.url ? `<div class="url-actions">
+        <button class="url-btn" title="Copy link" onclick="copyUrl('${j.url}')">⎘ Copy</button>
+        <a class="url-btn" href="${j.url}" target="_blank" rel="noopener noreferrer">↗ Open</a>
+      </div>` : ''}
     </div>`).join('');
 }
 
