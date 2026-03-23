@@ -11,10 +11,10 @@ from discord import app_commands
 
 from droptimizer import (
     RAIDBOTS_BASE,
-    apply_talent, build_payload, find_talent_builds,
-    fetch_character, fetch_encounter_items,
-    get_site_versions, poll_job, submit_job,
+    apply_talent, fetch_character, fetch_static_data,
+    find_talent_builds, poll_job, submit_job,
 )
+from payload_builder import CharacterIdentity, SimTarget, build_payload
 from raidbots_session import make_raidbots_session
 from qe_sim import is_healer, run_qe_upgradefinder
 
@@ -120,11 +120,7 @@ def _run_sims(simc: str, raidsid: str) -> list[dict]:
 
     # ── DPS / Tank: use Raidbots Droptimizer ────────────────────────────────
     init_session = make_raidbots_session(raidsid)
-    static_hash, frontend_version = get_site_versions(init_session)
-    encounter_items = fetch_encounter_items(init_session, static_hash)
-    instances = init_session.get(
-        f"{RAIDBOTS_BASE}/static/data/{static_hash}/instances.json", timeout=15
-    ).json()
+    static    = fetch_static_data(init_session)
     character = fetch_character(init_session, info["region"], info["realm"], info["name"])
 
     # Build job list
@@ -138,21 +134,17 @@ def _run_sims(simc: str, raidsid: str) -> list[dict]:
     def _one(build_label: str, talent_code: str | None, difficulty: str) -> dict:
         s = make_raidbots_session(raidsid)
         sim_simc = apply_talent(simc_final, talent_code) if talent_code else simc_final
-        cfg_wrap = {
-            "character":   {"name": info["name"], "realm": info["realm"], "region": info["region"]},
-            "simc_string": sim_simc,
-        }
-        run_opts = {
-            "difficulty":    difficulty,
-            "instance_id":   -91,
-            "spec":          info["spec"].capitalize(),
-            "spec_id":       spec_id,
-            "loot_spec_id":  loot_spec_id,
-            "fight_style":   "Patchwerk",
-            "iterations":    "smart",
-            "crafted_stats": crafted_stats,
-        }
-        payload   = build_payload(cfg_wrap, run_opts, character, encounter_items, instances, frontend_version)
+        identity = CharacterIdentity(
+            name=info["name"], realm=info["realm"], region=info["region"],
+            spec_label=info["spec"].capitalize(), simc_string=sim_simc,
+        )
+        target = SimTarget(
+            difficulty=difficulty,
+            spec_id=spec_id,
+            loot_spec_id=loot_spec_id,
+            crafted_stats=crafted_stats,
+        )
+        payload   = build_payload(identity, target, character, static)
         sim_id, _ = submit_job(s, payload, None)
         ok        = poll_job(s, sim_id, timeout_minutes=30)
         diff_name = "Heroic" if difficulty == "raid-heroic" else "Mythic"

@@ -12,14 +12,13 @@ from flask import Flask, jsonify, request, render_template
 from droptimizer import (
     RAIDBOTS_BASE,
     apply_talent,
-    build_payload,
-    find_talent_builds,
     fetch_character,
-    fetch_encounter_items,
-    get_site_versions,
+    fetch_static_data,
+    find_talent_builds,
     poll_job,
     submit_job,
 )
+from payload_builder import CharacterIdentity, SimTarget, build_payload
 from raidbots_session import make_raidbots_session
 from qe_sim import is_healer, run_qe_upgradefinder
 
@@ -141,8 +140,7 @@ _VALID_SPEC_NAMES: set[str] = set(_SPEC_ID_TO_NAME.values())
 
 
 
-def _run_one(job: dict, char: dict, raidsid: str,
-             encounter_items: list, instances: list, frontend_version: str) -> None:
+def _run_one(job: dict, char: dict, raidsid: str, static) -> None:
     jid     = job["id"]
     tag     = job["label"]
     spec_id = char.get("spec_id", 63)
@@ -187,10 +185,6 @@ def _run_one(job: dict, char: dict, raidsid: str,
     if job.get("talent_code"):
         simc = apply_talent(simc, job["talent_code"])
 
-    cfg_wrap = {
-        "character":   {"name": char["name"], "realm": char["realm"], "region": char["region"]},
-        "simc_string": simc,
-    }
     # Derive the canonical spec name from spec_id if char["spec"] is not a
     # recognised Raidbots spec name (e.g. it was accidentally set to the
     # character name).
@@ -199,21 +193,21 @@ def _run_one(job: dict, char: dict, raidsid: str,
         spec_name = _SPEC_ID_TO_NAME.get(spec_id, "Fire")
         _log(f"[{tag}] Spec '{char['spec']}' unrecognised — using '{spec_name}' from spec_id {spec_id}.")
 
-    run_opts = {
-        "difficulty":    job["difficulty"],
-        "instance_id":   -91,
-        "spec":          spec_name,
-        "spec_id":       spec_id,
-        "loot_spec_id":  char.get("loot_spec_id", spec_id),
-        "fight_style":   "Patchwerk",
-        "iterations":    "smart",
-        "crafted_stats": char.get("crafted_stats", "36/49"),
-    }
+    identity = CharacterIdentity(
+        name=char["name"], realm=char["realm"], region=char["region"],
+        spec_label=spec_name, simc_string=simc,
+    )
+    target = SimTarget(
+        difficulty=job["difficulty"],
+        spec_id=spec_id,
+        loot_spec_id=char.get("loot_spec_id", spec_id),
+        crafted_stats=char.get("crafted_stats", "36/49"),
+    )
 
     _update_job(jid, status="submitting")
     _log(f"[{tag}] Submitting...")
     try:
-        payload   = build_payload(cfg_wrap, run_opts, character, encounter_items, instances, frontend_version)
+        payload   = build_payload(identity, target, character, static)
         sim_id, _ = submit_job(session, payload, None)
     except Exception as e:
         _log(f"[{tag}] Submit failed: {e}")
@@ -238,19 +232,12 @@ def _run(jobs: list, chars_by_id: dict, raidsid: str) -> None:
         init_session = make_raidbots_session(raidsid)
 
         _log("Fetching static data...")
-        static_hash, frontend_version = get_site_versions(init_session)
-
-        _log("Fetching encounter items...")
-        encounter_items = fetch_encounter_items(init_session, static_hash)
-
-        resp      = init_session.get(f"{RAIDBOTS_BASE}/static/data/{static_hash}/instances.json", timeout=15)
-        instances = resp.json()
+        static = fetch_static_data(init_session)
         _log(f"Ready — {len(jobs)} job(s) queued, running in parallel.")
 
         with ThreadPoolExecutor(max_workers=len(jobs)) as pool:
             futures = {
-                pool.submit(_run_one, job, chars_by_id[job["char_id"]], raidsid,
-                            encounter_items, instances, frontend_version): job
+                pool.submit(_run_one, job, chars_by_id[job["char_id"]], raidsid, static): job
                 for job in jobs
             }
             for future in as_completed(futures):
