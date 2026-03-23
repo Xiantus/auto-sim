@@ -11,12 +11,11 @@ from discord import app_commands
 
 from droptimizer import (
     RAIDBOTS_BASE,
-    apply_talent, fetch_character, fetch_static_data,
-    find_talent_builds, poll_job, submit_job,
+    apply_talent, fetch_character, fetch_static_data, find_talent_builds,
 )
-from payload_builder import CharacterIdentity, SimTarget, build_payload
+from payload_builder import CharacterIdentity, SimTarget
 from raidbots_session import make_raidbots_session
-from qe_sim import is_healer, run_qe_upgradefinder
+from sim_router import is_healer, run_qe_sim, run_raidbots_sim
 
 CONFIG_PATH = Path(__file__).parent / "config.json"
 CHARS_PATH  = Path(__file__).parent / "characters.json"
@@ -107,11 +106,8 @@ def _run_sims(simc: str, raidsid: str) -> list[dict]:
         def _qe_one(build_label: str, talent_code: str | None) -> dict:
             sim_simc = apply_talent(simc_final, talent_code) if talent_code else simc_final
             label = f"Heroic + Mythic{' – ' + build_label if build_label else ''}"
-            try:
-                url = run_qe_upgradefinder(sim_simc)
-                return {"label": label, "url": url, "ok": True}
-            except Exception as e:
-                return {"label": label, "url": "", "ok": False, "error": str(e)}
+            r = run_qe_sim(sim_simc, label=label)
+            return {"label": r.label, "url": r.url, "ok": r.ok, "error": r.error}
 
         with concurrent.futures.ThreadPoolExecutor(max_workers=len(talent_builds)) as pool:
             futures = [pool.submit(_qe_one, bl, tc) for bl, tc in talent_builds.items()]
@@ -134,6 +130,8 @@ def _run_sims(simc: str, raidsid: str) -> list[dict]:
     def _one(build_label: str, talent_code: str | None, difficulty: str) -> dict:
         s = make_raidbots_session(raidsid)
         sim_simc = apply_talent(simc_final, talent_code) if talent_code else simc_final
+        diff_name = "Heroic" if difficulty == "raid-heroic" else "Mythic"
+        label     = f"{diff_name}{' – ' + build_label if build_label else ''}"
         identity = CharacterIdentity(
             name=info["name"], realm=info["realm"], region=info["region"],
             spec_label=info["spec"].capitalize(), simc_string=sim_simc,
@@ -144,12 +142,9 @@ def _run_sims(simc: str, raidsid: str) -> list[dict]:
             loot_spec_id=loot_spec_id,
             crafted_stats=crafted_stats,
         )
-        payload   = build_payload(identity, target, character, static)
-        sim_id, _ = submit_job(s, payload, None)
-        ok        = poll_job(s, sim_id, timeout_minutes=30)
-        diff_name = "Heroic" if difficulty == "raid-heroic" else "Mythic"
-        label     = f"{diff_name}{' – ' + build_label if build_label else ''}"
-        return {"label": label, "url": REPORT_URL.format(sim_id=sim_id), "ok": ok}
+        r = run_raidbots_sim(s, identity, target, character, static,
+                             report_url_template=REPORT_URL)
+        return {"label": label, "url": r.url, "ok": r.ok}
 
     with concurrent.futures.ThreadPoolExecutor(max_workers=len(jobs)) as pool:
         futures = [pool.submit(_one, *j) for j in jobs]

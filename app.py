@@ -20,7 +20,7 @@ from droptimizer import (
 )
 from payload_builder import CharacterIdentity, SimTarget, build_payload
 from raidbots_session import make_raidbots_session
-from qe_sim import is_healer, run_qe_upgradefinder
+from sim_router import is_healer, run_qe_sim, run_raidbots_sim
 
 app = Flask(__name__)
 
@@ -159,13 +159,13 @@ def _run_one(job: dict, char: dict, raidsid: str, static) -> None:
 
         _update_job(jid, status="running")
         _log(f"[{tag}] Running QE Upgrade Finder (Heroic + Mythic)...")
-        try:
-            url = run_qe_upgradefinder(simc)
+        result = run_qe_sim(simc)
+        if result.ok:
             _log(f"[{tag}] Done.")
-            _update_job(jid, status="done", url=url,
+            _update_job(jid, status="done", url=result.url,
                         label=tag.replace("– Heroic", "– Heroic + Mythic"))
-        except Exception as e:
-            _log(f"[{tag}] QE failed: {e}")
+        else:
+            _log(f"[{tag}] QE failed: {result.error}")
             _update_job(jid, status="failed")
         return
 
