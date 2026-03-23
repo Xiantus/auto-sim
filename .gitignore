@@ -1,0 +1,21 @@
+# Claude Code
+.claude/
+
+# Secrets & local config
+config.json
+characters.json
+
+# Debug output
+payload_debug.json
+droptimizer.log
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+
+# OS
+.DS_Store
+Thumbs.db

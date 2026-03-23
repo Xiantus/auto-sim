@@ -1,0 +1,50 @@
+{
+  "_comment": "Copy this file to config.json and fill in your values.",
+
+  "simc_string": "mage=\"YourChar\"\nlevel=80\nrace=...\nregion=eu\nserver=...\nrole=spell\nspec=fire\n\ntalents=...\n\nhead=,...",
+
+  "character": {
+    "region": "eu",
+    "realm": "your-realm",
+    "name": "YourCharName"
+  },
+
+  "_comment_discord": "Bot token from Discord Developer Portal. discord_channel_id = channel where /wishlist messages are posted.",
+  "discord_bot_token": "YOUR_BOT_TOKEN_HERE",
+  "discord_channel_id": "YOUR_CHANNEL_ID_HERE",
+
+  "_comment_raidsid": "Your raidsid cookie from raidbots.com (F12 → Application → Cookies). Refresh if sims start failing.",
+  "raidsid": "YOUR_RAIDSID_HERE",
+
+  "raidbots_api_key": null,
+
+  "_comment_runs": "difficulty must be 'raid-heroic' or 'raid-mythic'. instance_id -91 = Season 1 Raids.",
+  "runs": [
+    {
+      "instance_id": -91,
+      "difficulty": "raid-heroic",
+      "spec": "Fire",
+      "spec_id": 63,
+      "loot_spec_id": 63,
+      "fight_style": "Patchwerk",
+      "iterations": "smart",
+      "crafted_stats": "36/49"
+    },
+    {
+      "instance_id": -91,
+      "difficulty": "raid-mythic",
+      "spec": "Fire",
+      "spec_id": 63,
+      "loot_spec_id": 63,
+      "fight_style": "Patchwerk",
+      "iterations": "smart",
+      "crafted_stats": "36/49"
+    }
+  ],
+
+  "_comment_timeout": "How many minutes to wait for each sim before giving up.",
+  "timeout_minutes": 30,
+
+  "_comment_failure": "Send a Discord message if a sim fails or times out.",
+  "notify_on_failure": true
+}
