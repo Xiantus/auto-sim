@@ -20,7 +20,9 @@ services:
       TZ: ${TZ:-UTC}
 
     volumes:
-      - ./:/app
+      - ./config.json:/app/config.json:ro
+      - ./characters.json:/app/characters.json
+      - ./last_run.json:/app/last_run.json
 
     networks:
       - coolify           # shared Traefik network managed by Coolify
