@@ -73,41 +73,41 @@ DIFFICULTY_MAP: dict[str, dict[str, Any]] = {
         "instance_id": -91,
         "fight_style": "Patchwerk",
     },
-    "dungeon-mythic-7": {
+    "dungeon-mythic7": {
         "upgradeLevel": 12798,          # Hero 6/6 — M+7 end-of-dungeon max ilvl
         "levelSelectorSequence": 611,
         "itemLevel": "Hero",
         "season": "mid1",
         "source": "M+7",
-        "instance_id": -92,
-        "fight_style": "DungeonSlice",
+        "instance_id": -1,
+        "fight_style": "Patchwerk",
     },
-    "dungeon-mythic-10": {
+    "dungeon-mythic10": {
         "upgradeLevel": 12806,          # Myth 6/6 — M+10 end-of-dungeon max ilvl
         "levelSelectorSequence": 612,
         "itemLevel": "Myth",
         "season": "mid1",
         "source": "M+10",
-        "instance_id": -92,
-        "fight_style": "DungeonSlice",
+        "instance_id": -1,
+        "fight_style": "Patchwerk",
     },
-    "dungeon-mythic-10-vault": {
+    "dungeon-mythic-weekly10": {
         "upgradeLevel": 12806,          # Myth 6/6 — M+10 Great Vault track
         "levelSelectorSequence": 612,
         "itemLevel": "Myth",
         "season": "mid1",
         "source": "M+10 Vault",
-        "instance_id": -92,
-        "fight_style": "DungeonSlice",
+        "instance_id": -1,
+        "fight_style": "Patchwerk",
     },
 }
 
 # Virtual instance ID → real instance IDs it aggregates.
 # -91 = TWW Season 1 Raids  (Nerub-ar Palace · Blackrock Depths · Liberation of Undermine)
-# -92 = TWW Season 1 M+ pool (all 8 dungeons — IDs verified against Raidbots instances.json)
+# -1  = TWW Season 1 M+ pool (all 8 dungeons — IDs verified against Raidbots instances.json)
 VIRTUAL_INSTANCES: dict[int, list[int]] = {
     -91: [1307, 1308, 1314],
-    -92: [1268, 1269, 1270, 1271, 1274, 375, 1023, 1182],
+    -1:  [1268, 1269, 1270, 1271, 1274, 375, 1023, 1182],
 }
 
 
@@ -183,19 +183,21 @@ def _build_droptimizer_items(
         enc_list = [
             enc
             for inst in all_instances
-            if inst["id"] in sub_ids
+            if inst.get("id") in sub_ids
             for enc in inst.get("encounters", [])
         ]
-    virtual_encounter_ids   = {e["id"] for e in enc_list}
-    virtual_encounter_order = {e["id"]: i for i, e in enumerate(enc_list)}
+    virtual_encounter_ids   = {e["id"] for e in enc_list if "id" in e}
+    virtual_encounter_order = {e["id"]: i for i, e in enumerate(enc_list) if "id" in e}
 
     encounter_to_real_instance: dict[int, int] = {}
     for inst in all_instances:
-        if inst["id"] < 0:
+        inst_id = inst.get("id")
+        if inst_id is None or inst_id < 0:
             continue
         for enc in inst.get("encounters", []):
-            if enc["id"] in virtual_encounter_ids:
-                encounter_to_real_instance[enc["id"]] = inst["id"]
+            enc_id = enc.get("id")
+            if enc_id is not None and enc_id in virtual_encounter_ids:
+                encounter_to_real_instance[enc_id] = inst_id
 
     log.info(
         "Resolved %d encounters across real instances: %s",
@@ -259,13 +261,13 @@ def _build_droptimizer_items(
                     break
 
             real_instance_obj = next(
-                (i for i in all_instances if i["id"] == real_inst_id),
+                (i for i in all_instances if i.get("id") == real_inst_id),
                 {"id": real_inst_id},
             )
             encounter_obj = next(
                 (
-                    e for i in all_instances if i["id"] == real_inst_id
-                    for e in i.get("encounters", []) if e["id"] == enc_id
+                    e for i in all_instances if i.get("id") == real_inst_id
+                    for e in i.get("encounters", []) if e.get("id") == enc_id
                 ),
                 {"id": enc_id},
             )
@@ -355,9 +357,9 @@ def build_payload(
         A ``dict`` ready to POST to ``/sim``.
     """
     upgrade_info = DIFFICULTY_MAP.get(target.difficulty, DIFFICULTY_MAP["raid-heroic"])
-
     instance_data = next(
-        (i for i in static.instances if i["id"] == target.instance_id), {}
+        (i for i in static.instances if i.get("id") == target.instance_id),
+        {"id": target.instance_id},
     )
 
     droptimizer_items = _build_droptimizer_items(
@@ -467,6 +469,7 @@ def build_payload(
         "droptimizer": {
             "equipped":           character.get("items", {}),
             "instance":           target.instance_id,
+            **( {"encounter": -1} if target.difficulty.startswith("dungeon-") else {} ),
             "difficulty":         target.difficulty,
             "warforgeLevel":      0,
             "upgradeLevel":       upgrade_info["upgradeLevel"],

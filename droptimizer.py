@@ -204,9 +204,10 @@ def fetch_static_data(session: requests.Session) -> StaticData:
     """
     static_hash, frontend_version = get_site_versions(session)
     encounter_items = fetch_encounter_items(session, static_hash)
-    instances = session.get(
+    instances_resp = session.get(
         f"{RAIDBOTS_BASE}/static/data/{static_hash}/instances.json", timeout=15
-    ).json()
+    )
+    instances = instances_resp.json()
     return StaticData(
         encounter_items=encounter_items,
         instances=instances,

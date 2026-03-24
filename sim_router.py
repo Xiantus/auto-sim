@@ -22,12 +22,12 @@ log = logging.getLogger(__name__)
 
 # Human-readable label for each difficulty string understood by the system.
 DIFF_LABELS: dict[str, str] = {
-    "raid-normal":             "Normal",
-    "raid-heroic":             "Heroic",
-    "raid-mythic":             "Mythic",
-    "dungeon-mythic-7":        "M+7",
-    "dungeon-mythic-10":       "M+10",
-    "dungeon-mythic-10-vault": "M+10 Vault",
+    "raid-normal":              "Normal",
+    "raid-heroic":              "Heroic",
+    "raid-mythic":              "Mythic",
+    "dungeon-mythic7":          "M+7",
+    "dungeon-mythic10":         "M+10",
+    "dungeon-mythic-weekly10":  "M+10 Vault",
 }
 
 
@@ -137,7 +137,7 @@ def run_raidbots_sim(
         payload   = build_payload(identity, target, character, static)
         sim_id, _ = submit_job(session, payload, None)
     except Exception as exc:
-        log.error("Raidbots submit failed: %s", exc)
+        log.exception("Raidbots submit failed")
         return SimResult(label=label, url="", ok=False, error=str(exc))
 
     if on_submitted is not None:
