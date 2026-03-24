@@ -20,11 +20,7 @@ services:
       TZ: ${TZ:-UTC}
 
     volumes:
-      # Secrets — create these files on the host before deploying
-      - ./config.json:/app/config.json:ro
-      # Mutable data — will be created on first run if absent
-      - ./characters.json:/app/characters.json
-      - ./last_run.json:/app/last_run.json
+      - /app:/app:ro
 
     networks:
       - coolify           # shared Traefik network managed by Coolify
@@ -37,20 +33,20 @@ services:
 
       # HTTP → HTTPS redirect (handled by Coolify's global entrypoint redirect,
       # but included here as an explicit fallback)
-      - "traefik.http.routers.auto-sim-http.rule=Host(`${DOMAIN}`)"
-      - "traefik.http.routers.auto-sim-http.entrypoints=web"
-      - "traefik.http.routers.auto-sim-http.middlewares=auto-sim-https-redirect"
-      - "traefik.http.middlewares.auto-sim-https-redirect.redirectscheme.scheme=https"
-      - "traefik.http.middlewares.auto-sim-https-redirect.redirectscheme.permanent=true"
+      # - "traefik.http.routers.auto-sim-http.rule=Host(`${DOMAIN}`)"
+      # - "traefik.http.routers.auto-sim-http.entrypoints=web"
+      # - "traefik.http.routers.auto-sim-http.middlewares=auto-sim-https-redirect"
+      # - "traefik.http.middlewares.auto-sim-https-redirect.redirectscheme.scheme=https"
+      # - "traefik.http.middlewares.auto-sim-https-redirect.redirectscheme.permanent=true"
 
       # HTTPS router
-      - "traefik.http.routers.auto-sim.rule=Host(`${DOMAIN}`)"
-      - "traefik.http.routers.auto-sim.entrypoints=websecure"
-      - "traefik.http.routers.auto-sim.tls=true"
-      - "traefik.http.routers.auto-sim.tls.certresolver=letsencrypt"
+      # - "traefik.http.routers.auto-sim.rule=Host(`${DOMAIN}`)"
+      # - "traefik.http.routers.auto-sim.entrypoints=websecure"
+      # - "traefik.http.routers.auto-sim.tls=true"
+      # - "traefik.http.routers.auto-sim.tls.certresolver=letsencrypt"
 
       # Service (internal port Flask listens on)
-      - "traefik.http.services.auto-sim.loadbalancer.server.port=5000"
+      # - "traefik.http.services.auto-sim.loadbalancer.server.port=5000"
 
       # Optional: restrict access to a specific IP range
       # - "traefik.http.routers.auto-sim.middlewares=auto-sim-ipallow"
