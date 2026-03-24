@@ -2,6 +2,7 @@
 """app.py — Auto Sim web interface"""
 
 import json
+import time
 import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
@@ -22,19 +23,25 @@ from job_state import Job, JobStatus, SimRunnerState
 
 app = Flask(__name__)
 
-CHARS_PATH    = Path(__file__).parent / "characters.json"
-CONFIG_PATH   = Path(__file__).parent / "config.json"
-LAST_RUN_PATH = Path(__file__).parent / "last_run.json"
-REPORT_URL    = RAIDBOTS_BASE + "/simbot/report/{sim_id}"
+CHARS_PATH   = Path(__file__).parent / "characters.json"
+CONFIG_PATH  = Path(__file__).parent / "config.json"
+RESULTS_PATH = Path(__file__).parent / "results.json"
+REPORT_URL   = RAIDBOTS_BASE + "/simbot/report/{sim_id}"
 
 # ---------------------------------------------------------------------------
 # Global run state
 # ---------------------------------------------------------------------------
 
-state = SimRunnerState(LAST_RUN_PATH)
+state = SimRunnerState(RESULTS_PATH)
 
 
 def _log(msg: str) -> None:
+    state.append_log(msg)
+
+
+def _jlog(job_id: str, msg: str) -> None:
+    """Log to both the per-job log and the global log."""
+    state.append_job_log(job_id, msg)
     state.append_log(msg)
 
 
@@ -138,14 +145,14 @@ def _run_one(job: Job, char: dict, raidsid: str, static) -> None:
             simc = apply_talent(simc, job.talent_code)
 
         state.transition(jid, JobStatus.RUNNING)
-        _log(f"[{tag}] Running QE Upgrade Finder (Heroic + Mythic)...")
+        _jlog(jid, f"[{tag}] Running QE Upgrade Finder (Heroic + Mythic)...")
         result = run_qe_sim(simc, spec_id=spec_id)
         if result.ok:
-            _log(f"[{tag}] Done.")
+            _jlog(jid, f"[{tag}] Done.")
             state.transition(jid, JobStatus.DONE, url=result.url,
                              label=tag.replace("– Heroic", "– Heroic + Mythic"))
         else:
-            _log(f"[{tag}] QE failed: {result.error}")
+            _jlog(jid, f"[{tag}] QE failed: {result.error}")
             state.transition(jid, JobStatus.FAILED)
         return
 
@@ -153,11 +160,11 @@ def _run_one(job: Job, char: dict, raidsid: str, static) -> None:
     session = make_raidbots_session(raidsid)
 
     state.transition(jid, JobStatus.FETCHING)
-    _log(f"[{tag}] Fetching character from armory...")
+    _jlog(jid, f"[{tag}] Fetching character from armory...")
     try:
         character = fetch_character(session, char["region"], char["realm"], char["name"])
     except Exception as e:
-        _log(f"[{tag}] Character fetch failed: {e}")
+        _jlog(jid, f"[{tag}] Character fetch failed: {e}")
         state.transition(jid, JobStatus.FAILED)
         return
 
@@ -171,7 +178,7 @@ def _run_one(job: Job, char: dict, raidsid: str, static) -> None:
     spec_name = char["spec"].capitalize()
     if spec_name not in _VALID_SPEC_NAMES:
         spec_name = _SPEC_ID_TO_NAME.get(spec_id, "Fire")
-        _log(f"[{tag}] Spec '{char['spec']}' unrecognised — using '{spec_name}' from spec_id {spec_id}.")
+        _jlog(jid, f"[{tag}] Spec '{char['spec']}' unrecognised — using '{spec_name}' from spec_id {spec_id}.")
 
     diff_cfg = DIFFICULTY_MAP.get(job.difficulty, DIFFICULTY_MAP["raid-heroic"])
     identity = CharacterIdentity(
@@ -189,10 +196,10 @@ def _run_one(job: Job, char: dict, raidsid: str, static) -> None:
 
     def _on_submitted(sim_id: str) -> None:
         state.transition(jid, JobStatus.RUNNING, sim_id=sim_id)
-        _log(f"[{tag}] Running ({sim_id})...")
+        _jlog(jid, f"[{tag}] Running ({sim_id})...")
 
     state.transition(jid, JobStatus.SUBMITTING)
-    _log(f"[{tag}] Submitting...")
+    _jlog(jid, f"[{tag}] Submitting...")
     result = run_raidbots_sim(
         session, identity, target, character, static,
         report_url_template=REPORT_URL,
@@ -200,22 +207,22 @@ def _run_one(job: Job, char: dict, raidsid: str, static) -> None:
         on_submitted=_on_submitted,
     )
     if result.ok:
-        _log(f"[{tag}] Done.")
+        _jlog(jid, f"[{tag}] Done.")
         state.transition(jid, JobStatus.DONE, url=result.url)
     else:
         if result.error:
-            _log(f"[{tag}] {result.error}")
-        _log(f"[{tag}] Failed or timed out.")
+            _jlog(jid, f"[{tag}] {result.error}")
+        _jlog(jid, f"[{tag}] Failed or timed out.")
         state.transition(jid, JobStatus.FAILED, url=result.url or "")
 
 
-def _run(jobs: list[Job], chars_by_id: dict, raidsid: str) -> None:
+def _run_batch(jobs: list[Job], chars_by_id: dict, raidsid: str) -> None:
     try:
         init_session = make_raidbots_session(raidsid)
 
         _log("Fetching static data...")
         static = fetch_static_data(init_session)
-        _log(f"Ready — {len(jobs)} job(s) queued, running in parallel.")
+        _log(f"Starting {len(jobs)} job(s)...")
 
         with ThreadPoolExecutor(max_workers=len(jobs)) as pool:
             futures = {
@@ -230,10 +237,7 @@ def _run(jobs: list[Job], chars_by_id: dict, raidsid: str) -> None:
                     _log(f"[{job.label}] Unexpected error: {e}")
 
     except Exception as e:
-        _log(f"Unexpected error: {e}")
-    finally:
-        _log("— finished —")
-        state.finish_run()
+        _log(f"Unexpected error in batch: {e}")
 
 
 # ---------------------------------------------------------------------------
@@ -402,24 +406,21 @@ def api_run():
         for build_label, talent_code in talent_builds.items():
             for diff in sel.get("difficulties", []):
                 build_suffix = f" \u2013 {build_label}" if build_label else ""
-                job_id       = f"{sel['char_id']}-{build_label.lower() or 'default'}-{diff}"
+                job_id       = f"{sel['char_id']}-{build_label.lower() or 'default'}-{diff}-{int(time.time())}"
                 jobs.append(Job(
                     id=job_id,
                     char_id=sel["char_id"],
                     label=f"{char['name']} \u2013 {char['spec']}{build_suffix} \u2013 {get_diff_label(diff)}",
                     difficulty=diff,
+                    build_label=build_label,
                     talent_code=talent_code,
                 ))
 
     if not jobs:
         return jsonify({"error": "Nothing selected"}), 400
 
-    try:
-        state.start_run(jobs)
-    except RuntimeError:
-        return jsonify({"error": "Already running"}), 409
-
-    threading.Thread(target=_run, args=(jobs, chars_by_id, load_raidsid()), daemon=True).start()
+    state.add_jobs(jobs)
+    threading.Thread(target=_run_batch, args=(jobs, chars_by_id, load_raidsid()), daemon=True).start()
     return jsonify({"ok": True})
 
 

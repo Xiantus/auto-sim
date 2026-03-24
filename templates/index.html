@@ -151,6 +151,28 @@ input[type=checkbox]:indeterminate { accent-color: var(--accent); opacity: 0.6; 
 .job-group-header { display: flex; align-items: center; gap: 10px; padding: 10px 14px; cursor: pointer; user-select: none; transition: background .1s; }
 .job-group-header:hover { background: var(--surf2); }
 .job-group-body .job-row { border-radius: 0; border: none; border-top: 1px solid var(--border); }
+.job-group-body .result-row { border-radius: 0; border: none; border-top: 1px solid var(--border); }
+.job-group-body .result-row:first-child { border-top: none; }
+
+/* Result rows */
+.result-row { background: var(--surf); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+.result-row-main { display: flex; align-items: center; gap: 12px; padding: 10px 14px; }
+
+/* Active strip */
+@keyframes spin { to { transform: rotate(360deg); } }
+.active-strip { border-bottom: 1px solid var(--border); padding: 12px 20px; display: flex; flex-direction: column; gap: 6px; flex-shrink: 0; }
+.active-strip h2 { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .08em; color: var(--sub); margin-bottom: 4px; }
+.active-job-row { background: var(--surf); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+.active-job-main { display: flex; align-items: center; gap: 10px; padding: 8px 12px; }
+.spinner { width: 14px; height: 14px; border: 2px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin .8s linear infinite; flex-shrink: 0; }
+.elapsed { font-size: 11px; color: var(--sub); white-space: nowrap; }
+.job-log-toggle { background: none; border: none; color: var(--sub); font-size: 12px; cursor: pointer; padding: 2px 4px; white-space: nowrap; }
+.job-log-toggle:hover { color: var(--text); }
+.job-log-box { background: var(--surf2); border-top: 1px solid var(--border); padding: 8px 12px; font-family: 'Consolas', monospace; font-size: 11px; color: var(--sub); max-height: 120px; overflow-y: auto; line-height: 1.5; white-space: pre-wrap; word-break: break-all; }
+
+/* Extra badge variants */
+.badge-skipped   { background: #2a2a3e; color: var(--sub); }
+.badge-cancelled { background: #2a2a3e; color: var(--sub); }
 </style>
 </head>
 <body>
@@ -186,18 +208,20 @@ input[type=checkbox]:indeterminate { accent-color: var(--accent); opacity: 0.6; 
       <h2>Run</h2>
       <div id="char-selector"></div>
       <div class="run-controls">
-        <button id="go-btn" onclick="startRun()" disabled>GO</button>
+        <button id="go-btn" onclick="startRun()">GO</button>
         <span id="run-status-text"></span>
       </div>
+    </div>
+
+    <!-- Active sims strip (hidden when empty) -->
+    <div id="active-strip" class="active-strip" style="display:none">
+      <h2>Active Sims</h2>
+      <div id="active-jobs-list"></div>
     </div>
 
     <div class="results-section">
       <h2>Results</h2>
       <div id="jobs-list"></div>
-      <div class="log-wrap" id="log-wrap" style="display:none">
-        <button class="log-toggle" onclick="toggleLog()">▶ Log</button>
-        <div id="log-box" style="display:none"></div>
-      </div>
     </div>
   </div>
 </div>
@@ -264,12 +288,16 @@ input[type=checkbox]:indeterminate { accent-color: var(--accent); opacity: 0.6; 
 let chars = [];
 let editingId = null;
 let pollTimer = null;
-let logOpen = false;
 
-// Tracks which groups are expanded (by group key = character name lowercase)
-const charListOpen  = new Set();  // Characters panel
-const selectorOpen  = new Set();  // Run selector
-const jobGroupOpen  = new Set();  // Results panel
+const charListOpen = new Set();  // Characters panel
+const selectorOpen = new Set();  // Run selector
+const jobGroupOpen = new Set();  // Results panel groups
+const jobLogOpen   = new Set();  // Per-job log panels
+
+const DIFF_ORDER = [
+  'raid-normal','raid-heroic','raid-mythic',
+  'dungeon-mythic7','dungeon-mythic10','dungeon-mythic-weekly10',
+];
 
 /** Group an array of chars by lowercased name → Map<name, char[]> */
 function groupByName(arr) {
@@ -286,10 +314,10 @@ function groupByName(arr) {
 document.addEventListener('DOMContentLoaded', async () => {
   await loadChars();
   await refreshSettings();
-  // Restore last run results
   const s = await (await fetch('/api/status')).json();
-  renderJobs(s.jobs);
-  renderLog(s.log);
+  window._lastStatus = s;
+  renderActiveJobs(s.active_jobs || []);
+  renderResults(s.results || []);
   if (s.running) startPolling();
 });
 
@@ -730,9 +758,6 @@ async function startRun() {
   const d = await r.json();
   if (!r.ok) { showToast(d.error, true); return; }
 
-  document.getElementById('go-btn').disabled = true;
-  document.getElementById('run-status-text').textContent = 'Running…';
-  document.getElementById('log-wrap').style.display = '';
   startPolling();
 }
 
@@ -744,107 +769,170 @@ function startPolling() {
 async function pollStatus() {
   const r = await fetch('/api/status');
   const d = await r.json();
+  window._lastStatus = d;
 
-  renderJobs(d.jobs);
-  renderLog(d.log);
+  renderActiveJobs(d.active_jobs || []);
+  renderResults(d.results || []);
 
   if (!d.running) {
     clearInterval(pollTimer);
     pollTimer = null;
-    document.getElementById('go-btn').disabled = false;
-    document.getElementById('run-status-text').textContent = 'Done.';
   }
 }
 
-// ── Render jobs ───────────────────────────────────────────────────────────────
-function renderJobs(jobs) {
-  if (!jobs.length) return;
-  window._lastJobs = jobs;
-
-  // Group jobs by character name derived from char_id first segment
-  const groupMap = new Map();
-  for (const j of jobs) {
-    const gkey = j.char_id ? j.char_id.split('-')[0] : (j.label.split('–')[0] || j.label).trim().toLowerCase();
-    const displayName = j.label.split('–')[0].trim();
-    if (!groupMap.has(gkey)) groupMap.set(gkey, { displayName, jobs: [] });
-    groupMap.get(gkey).jobs.push(j);
+// ── Active Strip ──────────────────────────────────────────────────────────────
+function renderActiveJobs(activeJobs) {
+  const strip = document.getElementById('active-strip');
+  if (!activeJobs || !activeJobs.length) {
+    strip.style.display = 'none';
+    return;
   }
+  strip.style.display = '';
 
-  // Auto-expand groups with active jobs
-  for (const [key, grp] of groupMap) {
-    if (grp.jobs.some(j => ['running','fetching','submitting'].includes(j.status))) {
-      jobGroupOpen.add(key);
-    }
-  }
-
-  const terminalStatuses = new Set(['done', 'failed', 'cancelled', 'skipped']);
+  const now = Date.now() / 1000;
   let html = '';
+  for (const j of activeJobs) {
+    const isLogOpen = jobLogOpen.has(j.id);
+    const elapsed = j.started_at ? formatElapsed(now - j.started_at) : '';
+    const logContent = (j.log_lines || []).join('\n');
+    const hasLog = logContent.trim().length > 0;
+    html += `
+    <div class="active-job-row">
+      <div class="active-job-main">
+        <div class="spinner"></div>
+        <span class="job-label" style="flex:1">${j.label}</span>
+        <span class="badge badge-${j.status}">${statusLabel(j.status)}</span>
+        ${elapsed ? `<span class="elapsed">${elapsed}</span>` : ''}
+        ${hasLog ? `<button class="job-log-toggle" onclick="toggleJobLog('${j.id}')">${isLogOpen ? '▼' : '▶'} Log</button>` : ''}
+      </div>
+      ${hasLog && isLogOpen ? `<div class="job-log-box">${escHtml(logContent)}</div>` : ''}
+    </div>`;
+  }
+  document.getElementById('active-jobs-list').innerHTML = html;
+}
 
-  for (const [key, grp] of groupMap) {
-    const isOpen = jobGroupOpen.has(key);
-    const { displayName, jobs: gjobs } = grp;
+// ── Results ───────────────────────────────────────────────────────────────────
+function renderResults(results) {
+  const el = document.getElementById('jobs-list');
+  if (!results || !results.length) {
+    el.innerHTML = '<div style="color:var(--sub);font-size:13px;padding:4px 0">No completed sims yet.</div>';
+    return;
+  }
+
+  // Group by char_id, track most recently completed per group
+  const groupMap = new Map();
+  for (const entry of results) {
+    const charId = entry.latest.char_id;
+    const displayName = entry.latest.label.split('\u2013')[0].trim();
+    if (!groupMap.has(charId)) groupMap.set(charId, { displayName, entries: [], maxCompleted: 0 });
+    const grp = groupMap.get(charId);
+    grp.entries.push(entry);
+    const t = entry.latest.completed_at || 0;
+    if (t > grp.maxCompleted) grp.maxCompleted = t;
+  }
+
+  // Most recently completed group first
+  const sortedGroups = [...groupMap.entries()].sort((a, b) => b[1].maxCompleted - a[1].maxCompleted);
+
+  let html = '';
+  for (const [charId, grp] of sortedGroups) {
+    // Difficulties in fixed order, then by build_label
+    grp.entries.sort((a, b) => {
+      const ai = DIFF_ORDER.indexOf(a.latest.difficulty);
+      const bi = DIFF_ORDER.indexOf(b.latest.difficulty);
+      const as_ = ai === -1 ? 999 : ai;
+      const bs_ = bi === -1 ? 999 : bi;
+      if (as_ !== bs_) return as_ - bs_;
+      return (a.latest.build_label || '').localeCompare(b.latest.build_label || '');
+    });
+
+    const isOpen = jobGroupOpen.has(charId);
     const arrowClass = isOpen ? 'expand-arrow open' : 'expand-arrow';
+    const doneCount = grp.entries.filter(e => e.latest.status === 'done').length;
+    const failCount = grp.entries.filter(e => e.latest.status === 'failed').length;
+    const total = grp.entries.length;
+    const aggStatus = failCount > 0 ? 'failed' : 'done';
+    const aggBadge = failCount > 0
+      ? `${doneCount}/${total} Done, ${failCount} Failed`
+      : `${doneCount}/${total} Done`;
 
-    if (gjobs.length === 1) {
-      html += jobRowHtml(gjobs[0]);
+    if (grp.entries.length === 1) {
+      html += jobResultRowHtml(grp.entries[0]);
     } else {
-      const doneCount   = gjobs.filter(j => j.status === 'done').length;
-      const failCount   = gjobs.filter(j => j.status === 'failed').length;
-      const runningAny  = gjobs.some(j => !terminalStatuses.has(j.status));
-      let aggStatus = runningAny ? 'running' : (failCount > 0 ? 'failed' : 'done');
-      const aggBadge = runningAny
-        ? `${doneCount}/${gjobs.length} Done`
-        : (failCount > 0 ? `${doneCount}/${gjobs.length} Done` : `${doneCount}/${gjobs.length} Done`);
-
       html += `
       <div class="job-group">
-        <div class="job-group-header" onclick="toggleJobGroup('${key}')">
+        <div class="job-group-header" onclick="toggleJobGroup('${charId}')">
           <span class="${arrowClass}">▶</span>
-          <span class="job-label">${displayName}</span>
+          <span class="job-label">${grp.displayName}</span>
           <span class="badge badge-${aggStatus}">${aggBadge}</span>
         </div>
-        ${isOpen ? `<div class="job-group-body">${gjobs.map(j => jobRowHtml(j)).join('')}</div>` : ''}
+        ${isOpen ? `<div class="job-group-body">${grp.entries.map(e => jobResultRowHtml(e)).join('')}</div>` : ''}
       </div>`;
     }
   }
-
-  document.getElementById('jobs-list').innerHTML = html;
+  el.innerHTML = html;
 }
 
-function jobRowHtml(j) {
+function jobResultRowHtml(entry) {
+  const j = entry.latest;
+  const lastSuccess = entry.last_success;
+  const isLogOpen = jobLogOpen.has(j.id);
+
+  let logLines = [...(j.log_lines || [])];
+  if (j.status === 'failed' && lastSuccess && lastSuccess.url) {
+    logLines.push(`Last successful: ${lastSuccess.url}`);
+  }
+  const logContent = logLines.join('\n');
+  const hasLog = logContent.trim().length > 0;
+
   return `
-  <div class="job-row">
-    <span class="job-label">${j.label}</span>
-    <span class="badge badge-${j.status}">${statusLabel(j.status)}</span>
-    ${j.sim_id && j.status === 'done' ? `<img class="sim-preview" src="https://www.raidbots.com/simbot/report/${j.sim_id}/preview.png" alt="preview" title="Sim preview" onerror="this.style.display='none'">` : ''}
-    ${j.url ? `<div class="url-actions">
-      <button class="url-btn" title="Copy link" onclick="copyUrl('${j.url}')">⎘ Copy</button>
-      <a class="url-btn" href="${j.url}" target="_blank" rel="noopener noreferrer">↗ Open</a>
-    </div>` : ''}
+  <div class="result-row">
+    <div class="result-row-main">
+      <span class="job-label">${j.label}</span>
+      <span class="badge badge-${j.status}">${statusLabel(j.status)}</span>
+      ${j.sim_id && j.status === 'done' ? `<img class="sim-preview" src="https://www.raidbots.com/simbot/report/${j.sim_id}/preview.png" alt="preview" title="Sim preview" onerror="this.style.display='none'">` : ''}
+      ${j.url ? `<div class="url-actions">
+        <button class="url-btn" title="Copy link" onclick="copyUrl('${j.url}')">⎘ Copy</button>
+        <a class="url-btn" href="${j.url}" target="_blank" rel="noopener noreferrer">↗ Open</a>
+      </div>` : ''}
+      ${hasLog ? `<button class="job-log-toggle" onclick="toggleJobLog('${j.id}')">${isLogOpen ? '▼' : '▶'} Log</button>` : ''}
+    </div>
+    ${hasLog && isLogOpen ? `<div class="job-log-box">${escHtml(logContent)}</div>` : ''}
   </div>`;
 }
 
 function toggleJobGroup(key) {
   if (jobGroupOpen.has(key)) jobGroupOpen.delete(key);
   else jobGroupOpen.add(key);
-  if (window._lastJobs) renderJobs(window._lastJobs);
+  if (window._lastStatus) renderResults(window._lastStatus.results || []);
+}
+
+function toggleJobLog(jobId) {
+  if (jobLogOpen.has(jobId)) jobLogOpen.delete(jobId);
+  else jobLogOpen.add(jobId);
+  if (window._lastStatus) {
+    renderActiveJobs(window._lastStatus.active_jobs || []);
+    renderResults(window._lastStatus.results || []);
+  }
 }
 
 function statusLabel(s) {
-  return { pending:'Pending', fetching:'Fetching', submitting:'Submitting', running:'Running', done:'Done', failed:'Failed' }[s] ?? s;
+  return {
+    pending:'Pending', fetching:'Fetching', submitting:'Submitting',
+    running:'Running', done:'Done', failed:'Failed',
+    cancelled:'Cancelled', skipped:'Skipped',
+  }[s] ?? s;
 }
 
-function renderLog(lines) {
-  const box = document.getElementById('log-box');
-  box.textContent = lines.join('\n');
-  box.scrollTop = box.scrollHeight;
+function formatElapsed(secs) {
+  if (secs < 60) return `${Math.floor(secs)}s`;
+  const m = Math.floor(secs / 60);
+  const s = Math.floor(secs % 60);
+  return `${m}m ${s < 10 ? '0' + s : s}s`;
 }
 
-function toggleLog() {
-  logOpen = !logOpen;
-  const box = document.getElementById('log-box');
-  box.style.display = logOpen ? 'block' : 'none';
-  document.querySelector('.log-toggle').textContent = (logOpen ? '▼' : '▶') + ' Log';
+function escHtml(str) {
+  return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 }
 
 // ── Utilities ─────────────────────────────────────────────────────────────────
