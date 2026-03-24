@@ -20,6 +20,22 @@ if TYPE_CHECKING:
 
 log = logging.getLogger(__name__)
 
+# Human-readable label for each difficulty string understood by the system.
+DIFF_LABELS: dict[str, str] = {
+    "raid-normal":             "Normal",
+    "raid-heroic":             "Heroic",
+    "raid-mythic":             "Mythic",
+    "dungeon-mythic-7":        "M+7",
+    "dungeon-mythic-10":       "M+10",
+    "dungeon-mythic-10-vault": "M+10 Vault",
+}
+
+
+def diff_label(difficulty: str) -> str:
+    """Return a short human-readable label for a difficulty string."""
+    return DIFF_LABELS.get(difficulty, difficulty)
+
+
 # Spec IDs that should be routed to QE instead of Raidbots.
 # Kept here as the authoritative source; qe_sim.py re-exports for its own use.
 _HEALER_SPEC_IDS: frozenset[int] = frozenset({
@@ -64,7 +80,7 @@ def is_healer(spec_id: int) -> bool:
 # Backend wrappers
 # ---------------------------------------------------------------------------
 
-def run_qe_sim(simc: str, label: str = "Heroic + Mythic", timeout_minutes: int = 5) -> SimResult:
+def run_qe_sim(simc: str, label: str = "Heroic + Mythic", spec_id: int = 0, timeout_minutes: int = 5) -> SimResult:
     """Run a QuestionablyEpic Upgrade Finder simulation.
 
     Playwright is imported lazily here so callers that only run DPS sims are
@@ -81,7 +97,7 @@ def run_qe_sim(simc: str, label: str = "Heroic + Mythic", timeout_minutes: int =
     """
     try:
         from qe_sim import run_qe_upgradefinder  # lazy import
-        url = run_qe_upgradefinder(simc, timeout_minutes=timeout_minutes)
+        url = run_qe_upgradefinder(simc, spec_id=spec_id, timeout_minutes=timeout_minutes)
         return SimResult(label=label, url=url, ok=True)
     except Exception as exc:
         log.error("QE sim failed: %s", exc)
@@ -115,8 +131,7 @@ def run_raidbots_sim(
     from droptimizer import submit_job, poll_job   # lazy — avoids circular at module level
     from payload_builder import build_payload
 
-    diff_label = "Heroic" if target.difficulty == "raid-heroic" else "Mythic"
-    label = diff_label
+    label = diff_label(target.difficulty)
 
     try:
         payload   = build_payload(identity, target, character, static)

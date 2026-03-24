@@ -130,7 +130,7 @@ class SimulationRunner:
 
         from sim_router import is_healer
         if is_healer(spec_id):
-            return self._run_healer(simc_final)
+            return self._run_healer(simc_final, spec_id=spec_id)
         return self._run_dps(info, simc_final, spec_id, loot_spec_id, crafted_stats)
 
     async def run_async(self, simc: str) -> list:
@@ -166,7 +166,7 @@ class SimulationRunner:
         simc_final    = (preset.get("simc_string")   if preset else None) or simc
         return preset, spec_id, loot_spec_id, crafted_stats, simc_final
 
-    def _run_healer(self, simc_final: str) -> list:
+    def _run_healer(self, simc_final: str, spec_id: int = 0) -> list:
         from droptimizer import apply_talent, find_talent_builds
         from sim_router import run_qe_sim
 
@@ -175,7 +175,7 @@ class SimulationRunner:
         def _qe_one(build_label: str, talent_code) -> dict:
             sim_simc = apply_talent(simc_final, talent_code) if talent_code else simc_final
             label    = f"Heroic + Mythic{' \u2013 ' + build_label if build_label else ''}"
-            r = run_qe_sim(sim_simc, label=label,
+            r = run_qe_sim(sim_simc, label=label, spec_id=spec_id,
                            timeout_minutes=self._config.timeout_minutes)
             return {"label": r.label, "url": r.url, "ok": r.ok, "error": r.error}
 
@@ -206,16 +206,20 @@ class SimulationRunner:
         ]
 
         def _one(build_label: str, talent_code, difficulty: str) -> dict:
-            s = make_raidbots_session(self._config.raidsid)
-            sim_simc  = apply_talent(simc_final, talent_code) if talent_code else simc_final
-            diff_name = "Heroic" if difficulty == "raid-heroic" else "Mythic"
-            label     = f"{diff_name}{' \u2013 ' + build_label if build_label else ''}"
-            identity  = CharacterIdentity(
+            from payload_builder import DIFFICULTY_MAP
+            from sim_router import diff_label as get_diff_label
+            s        = make_raidbots_session(self._config.raidsid)
+            sim_simc = apply_talent(simc_final, talent_code) if talent_code else simc_final
+            label    = f"{get_diff_label(difficulty)}{' \u2013 ' + build_label if build_label else ''}"
+            diff_cfg = DIFFICULTY_MAP.get(difficulty, DIFFICULTY_MAP["raid-heroic"])
+            identity = CharacterIdentity(
                 name=info["name"], realm=info["realm"], region=info["region"],
                 spec_label=info["spec"].capitalize(), simc_string=sim_simc,
             )
             target = SimTarget(
                 difficulty=difficulty,
+                instance_id=diff_cfg["instance_id"],
+                fight_style=diff_cfg["fight_style"],
                 spec_id=spec_id,
                 loot_spec_id=loot_spec_id,
                 crafted_stats=crafted_stats,

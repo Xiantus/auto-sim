@@ -8,10 +8,9 @@ from playwright.sync_api import sync_playwright, TimeoutError as PWTimeout
 
 log = logging.getLogger(__name__)
 
-QE_BASE        = "https://questionablyepic.com"
-QE_UF_URL      = QE_BASE + "/live/upgradefinder"
-QE_REPORT_URL  = QE_BASE + "/live/upgradereport/{report_id}"
-DEBUG_SHOT     = Path(__file__).parent / "qe_debug.png"
+QE_BASE    = "https://questionablyepic.com"
+QE_UF_URL  = QE_BASE + "/live/upgradefinder"
+DEBUG_SHOT = Path(__file__).parent / "qe_debug.png"
 
 # Spec IDs that should be routed to QE instead of Raidbots
 HEALER_SPEC_IDS: set[int] = {
@@ -22,6 +21,17 @@ HEALER_SPEC_IDS: set[int] = {
     264,  # Restoration Shaman
     270,  # Mistweaver Monk
     1468, # Preservation Evoker
+}
+
+# Maps spec_id → the exact name shown in the QE "Current Spec" dropdown
+_QE_SPEC_NAMES: dict[int, str] = {
+    65:   "Holy Paladin",
+    105:  "Restoration Druid",
+    256:  "Discipline Priest",
+    257:  "Holy Priest",
+    264:  "Restoration Shaman",
+    270:  "Mistweaver Monk",
+    1468: "Preservation Evoker",
 }
 
 
@@ -38,13 +48,20 @@ def _js_click(page, locator, timeout: int = 10_000) -> None:
     page.evaluate("el => el.click()", handle)
 
 
-def run_qe_upgradefinder(simc: str, timeout_minutes: int = 5) -> str:
+def run_qe_upgradefinder(simc: str, spec_id: int = 0, timeout_minutes: int = 5) -> str:
     """
     Automate the QE Upgrade Finder with the given SimC string.
-    Selects HEROIC and MYTHIC difficulties then clicks GO! to run the simulation
-    and returns the shareable report URL.
 
-    Raises RuntimeError if the automation fails.
+    Flow (confirmed via manual testing):
+      1. Select the correct spec from the Current Spec dropdown
+      2. Dismiss cookie consent if present
+      3. Click IMPORT GEAR to open the SimC paste dialog
+      4. Paste the SimC string and click SUBMIT
+      5. Wait for the dialog to auto-close (QE processes the SimC)
+      6. Click GO! (HEROIC MAX + MYTHIC MAX are pre-selected by default)
+      7. Wait for the URL to navigate to /upgradereport/...
+
+    Returns the shareable report URL.  Raises RuntimeError on failure.
     """
     timeout_ms = timeout_minutes * 60 * 1000
 
@@ -54,8 +71,7 @@ def run_qe_upgradefinder(simc: str, timeout_minutes: int = 5) -> str:
         page = ctx.new_page()
 
         try:
-            # Block cookie/consent scripts before navigating so overlays
-            # never load and can't intercept clicks.
+            # Block cookie/consent scripts so overlays never intercept clicks.
             for pattern in ["**/*ncmp*", "**/*privacymanager*", "**/*cookieconsent*",
                              "**/*consent-manager*", "**/*trustarc*", "**/*onetrust*"]:
                 page.route(pattern, lambda route: route.abort())
@@ -63,104 +79,92 @@ def run_qe_upgradefinder(simc: str, timeout_minutes: int = 5) -> str:
             log.info("QE: navigating to upgrade finder...")
             page.goto(QE_UF_URL, timeout=30_000)
             page.wait_for_load_state("networkidle", timeout=30_000)
+            log.info("QE: page loaded.")
 
-            page.screenshot(path=str(DEBUG_SHOT))
-            log.info("QE: page loaded (screenshot saved).")
+            # ── Step 1: Dismiss cookie consent popup if present ───────────────
+            try:
+                accept_btn = page.locator("button").filter(
+                    has_text=re.compile(r"^\s*accept\s*$", re.I)
+                ).first
+                accept_btn.wait_for(state="visible", timeout=5_000)
+                _js_click(page, accept_btn, timeout=5_000)
+                log.info("QE: cookie consent accepted.")
+                page.wait_for_timeout(500)
+            except PWTimeout:
+                log.info("QE: no cookie consent popup.")
 
-            # ── Open SimC import dialog ──────────────────────────────────────
-            opened = False
-            for pattern in ["SimC", "Import", "simc", "import"]:
-                try:
-                    btn = page.get_by_role("button").filter(has_text=re.compile(pattern, re.I)).first
-                    _js_click(page, btn, timeout=5_000)
-                    page.wait_for_selector('[aria-labelledby="simc-dialog-title"]', timeout=5_000)
-                    opened = True
-                    log.info("QE: SimC dialog opened via button matching '%s'", pattern)
-                    break
-                except PWTimeout:
-                    continue
+            # ── Step 2: Select the correct spec ──────────────────────────────
+            qe_spec_name = _QE_SPEC_NAMES.get(int(spec_id)) if spec_id else None
+            if qe_spec_name:
+                # MUI Select needs a proper Playwright click (mousedown + mouseup)
+                # to open — page.evaluate el.click() only fires a synthetic click
+                # which MUI ignores for its dropdown trigger.
+                # Cookie popup is already gone so Playwright click works fine here.
+                select_btn = page.locator('.MuiSelect-select[role="button"]').first
+                select_btn.click(timeout=10_000)
+                log.info("QE: spec dropdown opened.")
+                page.wait_for_timeout(200)
+                page.screenshot(path=str(DEBUG_SHOT))
+                log.info("QE: screenshot 200ms after dropdown click saved.")
+                # Wait for the MUI portal listbox to appear then click the option
+                page.wait_for_selector('[role="listbox"]', timeout=5_000)
+                option = page.locator(f'[data-value="{qe_spec_name}"]')
+                _js_click(page, option, timeout=5_000)
+                log.info("QE: spec '%s' selected.", qe_spec_name)
+                page.wait_for_timeout(500)
 
-            if not opened:
-                raise RuntimeError("Could not find or open the SimC import dialog on QE upgrade finder.")
+            # ── Step 3: Open the SimC import dialog via IMPORT GEAR ──────────
+            import_btn = page.locator("button").filter(
+                has_text=re.compile(r"^\s*IMPORT\s+GEAR\s*$", re.I)
+            ).first
+            _js_click(page, import_btn, timeout=10_000)
+            page.wait_for_selector("textarea", timeout=10_000)
+            log.info("QE: IMPORT GEAR dialog opened.")
 
-            # ── Fill SimC string ─────────────────────────────────────────────
-            textarea = page.locator("#simcentry")
+            # ── Step 4: Paste the SimC string ────────────────────────────────
+            textarea = page.locator("textarea").first
             textarea.wait_for(state="visible", timeout=10_000)
             textarea.fill(simc)
             log.info("QE: SimC string entered.")
 
-            # ── Step 1: Submit the SimC to import character/gear ─────────────
-            dialog = page.locator('[role="dialog"]')
+            # ── Step 5: Submit ────────────────────────────────────────────────
+            submit_btn = page.locator("button").filter(
+                has_text=re.compile(r"^\s*SUBMIT\s*$", re.I)
+            ).first
+            _js_click(page, submit_btn, timeout=10_000)
+            log.info("QE: SUBMIT clicked, waiting for dialog to close...")
+
+            # QE closes the dialog itself once the character loads.
             try:
-                submit_btn = dialog.get_by_role("button", name=re.compile(r"^submit$", re.I))
-                _js_click(page, submit_btn, timeout=10_000)
-                log.info("QE: Submit clicked, waiting for page to process...")
-                page.wait_for_timeout(2_000)
+                page.wait_for_selector('[role="dialog"]', state="hidden", timeout=15_000)
+                log.info("QE: dialog auto-closed.")
             except PWTimeout:
-                log.warning("QE: Submit button not found, proceeding...")
-
-            # ── Step 2: Close the dialog so we can interact with the main page ─
-            page.keyboard.press("Escape")
-            page.wait_for_timeout(500)
-            # If Escape didn't close it, click outside the dialog
-            if page.locator('[role="dialog"]').count() > 0:
-                page.mouse.click(10, 10)
+                log.warning("QE: dialog still open after 15s, forcing close...")
+                page.keyboard.press("Escape")
                 page.wait_for_timeout(500)
-            log.info("QE: dialog closed.")
-
-            page.wait_for_timeout(1_000)
-            page.screenshot(path=str(DEBUG_SHOT))
-
-            # Dump button states so we know which are already selected
-            btn_info = page.evaluate("""() => {
-                return [...document.querySelectorAll('button')].map(b => ({
-                    text: b.innerText.trim(),
-                    cls: b.className,
-                    disabled: b.disabled
-                })).filter(b => b.text)
-            }""")
-            log.info("QE: buttons after dialog close: %s", btn_info)
-
-            # ── Step 3: Ensure HEROIC is selected ────────────────────────────
-            heroic_btn = page.locator("button").filter(has_text=re.compile(r"^\s*HEROIC\s*$", re.I)).first
-            heroic_cls = heroic_btn.get_attribute("class") or ""
-            log.info("QE: HEROIC button class before click: %s", heroic_cls)
-            _js_click(page, heroic_btn, timeout=10_000)
-            log.info("QE: HEROIC clicked.")
-            page.wait_for_timeout(300)
-            heroic_cls_after = heroic_btn.get_attribute("class") or ""
-            log.info("QE: HEROIC button class after click: %s", heroic_cls_after)
-
-            # ── Step 4: Ensure MYTHIC is selected ────────────────────────────
-            mythic_btn = page.locator("button").filter(has_text=re.compile(r"^\s*MYTHIC\s*$", re.I)).first
-            mythic_cls = mythic_btn.get_attribute("class") or ""
-            log.info("QE: MYTHIC button class before click: %s", mythic_cls)
-            _js_click(page, mythic_btn, timeout=10_000)
-            log.info("QE: MYTHIC clicked.")
-            page.wait_for_timeout(300)
-            mythic_cls_after = mythic_btn.get_attribute("class") or ""
-            log.info("QE: MYTHIC button class after click: %s", mythic_cls_after)
+                if page.locator('[role="dialog"]').count() > 0:
+                    page.mouse.click(10, 10)
+                    page.wait_for_timeout(500)
 
             page.screenshot(path=str(DEBUG_SHOT))
-            log.info("QE: screenshot after difficulty selection saved.")
+            log.info("QE: pre-GO screenshot saved.")
 
-            # ── Step 5: Click GO! ─────────────────────────────────────────────
-            go_btn = page.locator("button").filter(has_text=re.compile(r"^\s*go[!.]?\s*$", re.I)).first
+            # ── Step 6: Click GO! ─────────────────────────────────────────────
+            # HEROIC (MAX) and MYTHIC (MAX) are already selected by default.
+            go_btn = page.locator("button").filter(
+                has_text=re.compile(r"^\s*go[!.]?\s*$", re.I)
+            ).first
             _js_click(page, go_btn, timeout=10_000)
-            log.info("QE: GO! clicked, URL: %s", page.url)
-            page.wait_for_timeout(3_000)
-            page.screenshot(path=str(DEBUG_SHOT))
-            log.info("QE: post-GO screenshot saved, URL: %s", page.url)
+            log.info("QE: GO! clicked.")
 
-            # ── Wait for report URL (works for both full nav and pushState) ──
-            log.info("QE: waiting for report URL...")
+            # ── Step 7: Wait for report URL ───────────────────────────────────
+            # Use wait_for_function so SPA pushState navigation is detected.
             page.wait_for_function(
                 "window.location.href.includes('upgradereport')",
                 timeout=timeout_ms,
             )
             report_url = page.url
 
-            # Normalise to absolute URL
             if report_url.startswith("/"):
                 report_url = QE_BASE + report_url
             elif not report_url.startswith("http"):
