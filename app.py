@@ -14,10 +14,8 @@ from droptimizer import (
     fetch_character,
     fetch_static_data,
     find_talent_builds,
-    poll_job,
-    submit_job,
 )
-from payload_builder import CharacterIdentity, SimTarget, build_payload
+from payload_builder import CharacterIdentity, SimTarget
 from raidbots_session import make_raidbots_session
 from sim_router import is_healer, run_qe_sim, run_raidbots_sim
 from job_state import Job, JobStatus, SimRunnerState
@@ -186,27 +184,26 @@ def _run_one(job: Job, char: dict, raidsid: str, static) -> None:
         crafted_stats=char.get("crafted_stats", "36/49"),
     )
 
+    def _on_submitted(sim_id: str) -> None:
+        state.transition(jid, JobStatus.RUNNING, sim_id=sim_id)
+        _log(f"[{tag}] Running ({sim_id})...")
+
     state.transition(jid, JobStatus.SUBMITTING)
     _log(f"[{tag}] Submitting...")
-    try:
-        payload   = build_payload(identity, target, character, static)
-        sim_id, _ = submit_job(session, payload, None)
-    except Exception as e:
-        _log(f"[{tag}] Submit failed: {e}")
-        state.transition(jid, JobStatus.FAILED)
-        return
-
-    state.transition(jid, JobStatus.RUNNING, sim_id=sim_id)
-    _log(f"[{tag}] Running ({sim_id})...")
-
-    ok  = poll_job(session, sim_id, timeout_minutes=30)
-    url = REPORT_URL.format(sim_id=sim_id)
-    if ok:
+    result = run_raidbots_sim(
+        session, identity, target, character, static,
+        report_url_template=REPORT_URL,
+        timeout_minutes=30,
+        on_submitted=_on_submitted,
+    )
+    if result.ok:
         _log(f"[{tag}] Done.")
-        state.transition(jid, JobStatus.DONE, url=url)
+        state.transition(jid, JobStatus.DONE, url=result.url)
     else:
+        if result.error:
+            _log(f"[{tag}] {result.error}")
         _log(f"[{tag}] Failed or timed out.")
-        state.transition(jid, JobStatus.FAILED, url=url)
+        state.transition(jid, JobStatus.FAILED, url=result.url or "")
 
 
 def _run(jobs: list[Job], chars_by_id: dict, raidsid: str) -> None:

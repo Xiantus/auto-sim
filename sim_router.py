@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Callable, Optional
 
 if TYPE_CHECKING:
     import requests
@@ -96,6 +96,7 @@ def run_raidbots_sim(
     static:    "StaticData",
     report_url_template: str = "https://www.raidbots.com/simbot/report/{sim_id}",
     timeout_minutes: int = 30,
+    on_submitted: Optional[Callable[[str], None]] = None,
 ) -> SimResult:
     """Submit a Raidbots Droptimizer job and poll until it completes.
 
@@ -123,6 +124,12 @@ def run_raidbots_sim(
     except Exception as exc:
         log.error("Raidbots submit failed: %s", exc)
         return SimResult(label=label, url="", ok=False, error=str(exc))
+
+    if on_submitted is not None:
+        try:
+            on_submitted(sim_id)
+        except Exception as exc:
+            log.warning("on_submitted callback raised: %s", exc)
 
     ok  = poll_job(session, sim_id, timeout_minutes=timeout_minutes)
     url = report_url_template.format(sim_id=sim_id)
