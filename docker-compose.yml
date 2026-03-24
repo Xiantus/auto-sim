@@ -20,7 +20,7 @@ services:
       TZ: ${TZ:-UTC}
 
     volumes:
-      - /app:/app:ro
+      - ./app:/app
 
     networks:
       - coolify           # shared Traefik network managed by Coolify
