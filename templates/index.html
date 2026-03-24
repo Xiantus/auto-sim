@@ -403,6 +403,30 @@ function toggleCharGroup(key) {
   renderCharList();
 }
 
+const HEALER_SPEC_IDS = new Set([65, 105, 256, 257, 264, 270, 1468]);
+function isHealerChar(spec_id) { return HEALER_SPEC_IDS.has(Number(spec_id)); }
+
+const DPS_DIFFS = [
+  { value: 'raid-normal',             label: 'Normal',     checked: false },
+  { value: 'raid-heroic',             label: 'Heroic',     checked: true  },
+  { value: 'raid-mythic',             label: 'Mythic',     checked: true  },
+  { value: 'dungeon-mythic-7',        label: 'M+7',        checked: false },
+  { value: 'dungeon-mythic-10',       label: 'M+10',       checked: false },
+  { value: 'dungeon-mythic-10-vault', label: 'M+10 Vault', checked: false },
+];
+
+function diffGroupHtml(id, spec_id) {
+  if (isHealerChar(spec_id)) {
+    return `<span style="color:var(--sub);font-size:12px">QE Upgrade Finder (Heroic + Mythic)</span>`;
+  }
+  return DPS_DIFFS.map(d => `
+    <label class="diff-cb">
+      <input type="checkbox" class="diff-cb-diff" data-id="${id}" data-diff="${d.value}"
+        ${d.checked ? 'checked' : ''} onchange="updateGoBtn()">
+      ${d.label}
+    </label>`).join('');
+}
+
 function renderSelector() {
   const el = document.getElementById('char-selector');
   if (!chars.length) {
@@ -429,10 +453,7 @@ function renderSelector() {
           <input type="checkbox" class="char-cb" data-id="${c.id}" onchange="updateGoBtn()">
           <span><strong>${c.name}</strong> – ${c.spec} <span style="color:var(--sub);font-size:12px">(${c.region.toUpperCase()}/${c.realm})</span></span>
         </label>
-        <div class="diff-group">
-          <label class="diff-cb"><input type="checkbox" class="diff-h" data-id="${c.id}" checked onchange="updateGoBtn()"> H</label>
-          <label class="diff-cb"><input type="checkbox" class="diff-m" data-id="${c.id}" checked onchange="updateGoBtn()"> M</label>
-        </div>
+        <div class="diff-group">${diffGroupHtml(c.id, c.spec_id)}</div>
       </div>`;
     } else {
       // Multi-spec group
@@ -454,10 +475,7 @@ function renderSelector() {
               <input type="checkbox" class="char-cb" data-id="${c.id}" data-group="${key}" onchange="onSpecCbChange('${key}')">
               <span style="color:var(--accent)">${c.spec}</span>
             </label>
-            <div class="diff-group">
-              <label class="diff-cb"><input type="checkbox" class="diff-h" data-id="${c.id}" checked onchange="updateGoBtn()"> H</label>
-              <label class="diff-cb"><input type="checkbox" class="diff-m" data-id="${c.id}" checked onchange="updateGoBtn()"> M</label>
-            </div>
+            <div class="diff-group">${diffGroupHtml(c.id, c.spec_id)}</div>
           </div>`).join('')}
         </div>` : ''}
       </div>`;
@@ -495,15 +513,12 @@ function onSpecCbChange(key) {
 }
 
 function updateGoBtn() {
-  // A selection counts if the spec checkbox is checked AND at least one difficulty is checked
-  // For single-spec rows (no data-group) use .char-cb; for grouped rows also .char-cb
   const anySelected = [...document.querySelectorAll('.char-cb:checked')].some(cb => {
-    const id = cb.dataset.id;
-    const h = document.querySelector(`.diff-h[data-id="${id}"]`)?.checked;
-    const m = document.querySelector(`.diff-m[data-id="${id}"]`)?.checked;
-    return h || m;
+    const id   = cb.dataset.id;
+    const char = chars.find(c => c.id === id);
+    if (isHealerChar(char?.spec_id)) return true;  // healers always run QE — no diff selection needed
+    return [...document.querySelectorAll(`.diff-cb-diff[data-id="${id}"]`)].some(d => d.checked);
   });
-  // Also count group-level selections where the group is collapsed (specs not rendered)
   const anyGroupSelected = [...document.querySelectorAll('.group-cb:checked')].length > 0;
   document.getElementById('go-btn').disabled = !(anySelected || anyGroupSelected);
 }
@@ -680,24 +695,32 @@ async function startRun() {
 
   // Collect from visible individual spec checkboxes
   document.querySelectorAll('.char-cb:checked').forEach(cb => {
-    const id = cb.dataset.id;
+    const id   = cb.dataset.id;
     if (seenIds.has(id)) return;
     seenIds.add(id);
+    const char  = chars.find(c => c.id === id);
     const diffs = [];
-    if (document.querySelector(`.diff-h[data-id="${id}"]`)?.checked) diffs.push('raid-heroic');
-    if (document.querySelector(`.diff-m[data-id="${id}"]`)?.checked) diffs.push('raid-mythic');
+    if (isHealerChar(char?.spec_id)) {
+      diffs.push('raid-heroic');  // QE handles both difficulties in one run
+    } else {
+      document.querySelectorAll(`.diff-cb-diff[data-id="${id}"]:checked`).forEach(d => {
+        diffs.push(d.dataset.diff);
+      });
+    }
     if (diffs.length) selections.push({ char_id: id, difficulties: diffs });
   });
 
   // Collect from collapsed group checkboxes (specs not rendered in DOM)
   document.querySelectorAll('.group-cb:checked').forEach(groupCb => {
-    const key = groupCb.dataset.group;
-    // Find all chars for this group from the chars array
+    const key        = groupCb.dataset.group;
     const groupChars = chars.filter(c => c.name.toLowerCase() === key);
     for (const c of groupChars) {
       if (seenIds.has(c.id)) continue;
       seenIds.add(c.id);
-      selections.push({ char_id: c.id, difficulties: ['raid-heroic', 'raid-mythic'] });
+      const diffs = isHealerChar(c.spec_id)
+        ? ['raid-heroic']
+        : DPS_DIFFS.filter(d => d.checked).map(d => d.value);
+      selections.push({ char_id: c.id, difficulties: diffs });
     }
   });
 

@@ -39,27 +39,75 @@ log = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 # Difficulty string → Raidbots bonus ID / upgrade track metadata.
-# Hero track  = raid-heroic, group 611, 6/6 bonusId 12798
-# Myth track  = raid-mythic, group 612, 6/6 bonusId 12806
+# Champion track = raid-normal,  group 610, 6/6 bonusId 12788
+# Hero track     = raid-heroic,  group 611, 6/6 bonusId 12798
+# Myth track     = raid-mythic,  group 612, 6/6 bonusId 12806
+#
+# instance_id: which virtual/real instance pool to use (-91 = S1 raids, -92 = S1 dungeons)
+# fight_style:  Patchwerk for raids, DungeonSlice for M+ dungeons
 DIFFICULTY_MAP: dict[str, dict[str, Any]] = {
+    "raid-normal": {
+        "upgradeLevel": 12788,          # Champion 6/6 — Normal raid max ilvl
+        "levelSelectorSequence": 610,
+        "itemLevel": "Champion",
+        "season": "mid1",
+        "source": "Normal",
+        "instance_id": -91,
+        "fight_style": "Patchwerk",
+    },
     "raid-heroic": {
         "upgradeLevel": 12798,
         "levelSelectorSequence": 611,
         "itemLevel": "Hero",
         "season": "mid1",
+        "source": "Heroic",
+        "instance_id": -91,
+        "fight_style": "Patchwerk",
     },
     "raid-mythic": {
         "upgradeLevel": 12806,
         "levelSelectorSequence": 612,
         "itemLevel": "Myth",
         "season": "mid1",
+        "source": "Mythic",
+        "instance_id": -91,
+        "fight_style": "Patchwerk",
+    },
+    "dungeon-mythic-7": {
+        "upgradeLevel": 12798,          # Hero 6/6 — M+7 end-of-dungeon max ilvl
+        "levelSelectorSequence": 611,
+        "itemLevel": "Hero",
+        "season": "mid1",
+        "source": "M+7",
+        "instance_id": -92,
+        "fight_style": "DungeonSlice",
+    },
+    "dungeon-mythic-10": {
+        "upgradeLevel": 12806,          # Myth 6/6 — M+10 end-of-dungeon max ilvl
+        "levelSelectorSequence": 612,
+        "itemLevel": "Myth",
+        "season": "mid1",
+        "source": "M+10",
+        "instance_id": -92,
+        "fight_style": "DungeonSlice",
+    },
+    "dungeon-mythic-10-vault": {
+        "upgradeLevel": 12806,          # Myth 6/6 — M+10 Great Vault track
+        "levelSelectorSequence": 612,
+        "itemLevel": "Myth",
+        "season": "mid1",
+        "source": "M+10 Vault",
+        "instance_id": -92,
+        "fight_style": "DungeonSlice",
     },
 }
 
-# Virtual instance ID → real raid instance IDs it aggregates.
-# -91 = TWW Season 1 Raids (all three raid instances combined).
+# Virtual instance ID → real instance IDs it aggregates.
+# -91 = TWW Season 1 Raids  (Nerub-ar Palace · Blackrock Depths · Liberation of Undermine)
+# -92 = TWW Season 1 M+ pool (all 8 dungeons — IDs verified against Raidbots instances.json)
 VIRTUAL_INSTANCES: dict[int, list[int]] = {
     -91: [1307, 1308, 1314],
+    -92: [1268, 1269, 1270, 1271, 1274, 375, 1023, 1182],
 }
 
 
@@ -327,10 +375,11 @@ def build_payload(
     }
     character = {**character, "items": clean_items}
 
-    diff_label  = "Heroic" if target.difficulty == "raid-heroic" else "Mythic"
-    report_name = (
-        f"Droptimizer \u2022 Season 1 Raids \u2022 "
-        f"{diff_label} \u2022 {upgrade_info['itemLevel']} 6/6"
+    source_label = upgrade_info.get("source", "Heroic")
+    category     = "Dungeons" if target.difficulty.startswith("dungeon-") else "Raids"
+    report_name  = (
+        f"Droptimizer \u2022 Season 1 {category} \u2022 "
+        f"{source_label} \u2022 {upgrade_info['itemLevel']} 6/6"
     )
 
     return {

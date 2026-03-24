@@ -15,9 +15,9 @@ from droptimizer import (
     fetch_static_data,
     find_talent_builds,
 )
-from payload_builder import CharacterIdentity, SimTarget
+from payload_builder import CharacterIdentity, DIFFICULTY_MAP, SimTarget
 from raidbots_session import make_raidbots_session
-from sim_router import is_healer, run_qe_sim, run_raidbots_sim
+from sim_router import diff_label as get_diff_label, is_healer, run_qe_sim, run_raidbots_sim
 from job_state import Job, JobStatus, SimRunnerState
 
 app = Flask(__name__)
@@ -139,7 +139,7 @@ def _run_one(job: Job, char: dict, raidsid: str, static) -> None:
 
         state.transition(jid, JobStatus.RUNNING)
         _log(f"[{tag}] Running QE Upgrade Finder (Heroic + Mythic)...")
-        result = run_qe_sim(simc)
+        result = run_qe_sim(simc, spec_id=spec_id)
         if result.ok:
             _log(f"[{tag}] Done.")
             state.transition(jid, JobStatus.DONE, url=result.url,
@@ -173,12 +173,15 @@ def _run_one(job: Job, char: dict, raidsid: str, static) -> None:
         spec_name = _SPEC_ID_TO_NAME.get(spec_id, "Fire")
         _log(f"[{tag}] Spec '{char['spec']}' unrecognised — using '{spec_name}' from spec_id {spec_id}.")
 
+    diff_cfg = DIFFICULTY_MAP.get(job.difficulty, DIFFICULTY_MAP["raid-heroic"])
     identity = CharacterIdentity(
         name=char["name"], realm=char["realm"], region=char["region"],
         spec_label=spec_name, simc_string=simc,
     )
     target = SimTarget(
         difficulty=job.difficulty,
+        instance_id=diff_cfg["instance_id"],
+        fight_style=diff_cfg["fight_style"],
         spec_id=spec_id,
         loot_spec_id=char.get("loot_spec_id", spec_id),
         crafted_stats=char.get("crafted_stats", "36/49"),
@@ -398,13 +401,12 @@ def api_run():
 
         for build_label, talent_code in talent_builds.items():
             for diff in sel.get("difficulties", []):
-                diff_label   = "Heroic" if diff == "raid-heroic" else "Mythic"
                 build_suffix = f" \u2013 {build_label}" if build_label else ""
                 job_id       = f"{sel['char_id']}-{build_label.lower() or 'default'}-{diff}"
                 jobs.append(Job(
                     id=job_id,
                     char_id=sel["char_id"],
-                    label=f"{char['name']} \u2013 {char['spec']}{build_suffix} \u2013 {diff_label}",
+                    label=f"{char['name']} \u2013 {char['spec']}{build_suffix} \u2013 {get_diff_label(diff)}",
                     difficulty=diff,
                     talent_code=talent_code,
                 ))
