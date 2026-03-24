@@ -137,7 +137,7 @@ def run_raidbots_sim(
         payload   = build_payload(identity, target, character, static)
         sim_id, _ = submit_job(session, payload, None)
     except Exception as exc:
-        log.error("Raidbots submit failed: %s", exc)
+        log.exception("Raidbots submit failed")
         return SimResult(label=label, url="", ok=False, error=str(exc))
 
     if on_submitted is not None:

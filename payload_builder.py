@@ -80,7 +80,7 @@ DIFFICULTY_MAP: dict[str, dict[str, Any]] = {
         "season": "mid1",
         "source": "M+7",
         "instance_id": -1,
-        "fight_style": "DungeonSlice",
+        "fight_style": "Patchwerk",
     },
     "dungeon-mythic10": {
         "upgradeLevel": 12806,          # Myth 6/6 — M+10 end-of-dungeon max ilvl
@@ -89,7 +89,7 @@ DIFFICULTY_MAP: dict[str, dict[str, Any]] = {
         "season": "mid1",
         "source": "M+10",
         "instance_id": -1,
-        "fight_style": "DungeonSlice",
+        "fight_style": "Patchwerk",
     },
     "dungeon-mythic-weekly10": {
         "upgradeLevel": 12806,          # Myth 6/6 — M+10 Great Vault track
@@ -98,7 +98,7 @@ DIFFICULTY_MAP: dict[str, dict[str, Any]] = {
         "season": "mid1",
         "source": "M+10 Vault",
         "instance_id": -1,
-        "fight_style": "DungeonSlice",
+        "fight_style": "Patchwerk",
     },
 }
 
