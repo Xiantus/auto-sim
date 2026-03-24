@@ -357,7 +357,8 @@ def build_payload(
     upgrade_info = DIFFICULTY_MAP.get(target.difficulty, DIFFICULTY_MAP["raid-heroic"])
 
     instance_data = next(
-        (i for i in static.instances if i["id"] == target.instance_id), {}
+        (i for i in static.instances if i["id"] == target.instance_id),
+        {"id": target.instance_id},
     )
 
     droptimizer_items = _build_droptimizer_items(
