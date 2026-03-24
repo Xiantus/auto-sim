@@ -10,7 +10,8 @@ Design goals
 - Transition DAG enforced: invalid transitions raise :exc:`InvalidTransitionError`.
 - Observers notified after each transition (used for e.g. Discord push).
 - ``snapshot()`` returns a deep copy so callers cannot mutate live state.
-- ``persist_path`` injected at construction — pass ``Path("/dev/null")`` in tests.
+- ``persist_path`` injected at construction — pass ``Path("/dev/null")`` in tests to
+  suppress all file I/O.
 """
 
 from __future__ import annotations
@@ -18,6 +19,7 @@ from __future__ import annotations
 import copy
 import json
 import logging
+import time
 import threading
 from dataclasses import dataclass, field
 from enum import Enum
@@ -70,6 +72,10 @@ _TRANSITIONS: dict[JobStatus, frozenset[JobStatus]] = {
     }),
 }
 
+_TERMINAL: frozenset[JobStatus] = frozenset({
+    JobStatus.DONE, JobStatus.FAILED, JobStatus.CANCELLED, JobStatus.SKIPPED,
+})
+
 
 class InvalidTransitionError(ValueError):
     """Raised when a requested status transition is not in the allowed DAG."""
@@ -86,21 +92,29 @@ class Job:
     char_id:      str
     label:        str
     difficulty:   str
+    build_label:  str            = ""
     talent_code:  Optional[str] = None
     status:       JobStatus     = JobStatus.PENDING
     sim_id:       Optional[str] = None
     url:          Optional[str] = None
+    started_at:   Optional[float] = None
+    completed_at: Optional[float] = None
+    log_lines:    list           = field(default_factory=list)
 
     def as_dict(self) -> dict:
         return {
-            "id":          self.id,
-            "char_id":     self.char_id,
-            "label":       self.label,
-            "difficulty":  self.difficulty,
-            "talent_code": self.talent_code,
-            "status":      self.status.value,
-            "sim_id":      self.sim_id,
-            "url":         self.url,
+            "id":           self.id,
+            "char_id":      self.char_id,
+            "label":        self.label,
+            "difficulty":   self.difficulty,
+            "build_label":  self.build_label,
+            "talent_code":  self.talent_code,
+            "status":       self.status.value,
+            "sim_id":       self.sim_id,
+            "url":          self.url,
+            "started_at":   self.started_at,
+            "completed_at": self.completed_at,
+            "log_lines":    list(self.log_lines),
         }
 
     @classmethod
@@ -110,10 +124,14 @@ class Job:
             char_id=d["char_id"],
             label=d["label"],
             difficulty=d["difficulty"],
+            build_label=d.get("build_label", ""),
             talent_code=d.get("talent_code"),
-            status=JobStatus(d.get("status", "pending")),
+            status=JobStatus(d.get("status", "done")),
             sim_id=d.get("sim_id"),
             url=d.get("url"),
+            started_at=d.get("started_at"),
+            completed_at=d.get("completed_at"),
+            log_lines=d.get("log_lines", []),
         )
 
 
@@ -129,7 +147,7 @@ class SimRunnerState:
     """Thread-safe run state container with enforced transition DAG.
 
     Args:
-        persist_path: Path to write/read ``last_run.json``.  Pass
+        persist_path: Path to write/read ``results.json``.  Pass
                       ``Path("/dev/null")`` or ``Path("nul")`` in tests to
                       suppress all file I/O.
     """
@@ -137,9 +155,9 @@ class SimRunnerState:
     def __init__(self, persist_path: Path) -> None:
         self._persist_path = persist_path
         self._lock         = threading.RLock()
-        self._running      = False
-        self._jobs:  list[Job] = []
-        self._log:   list[str] = []
+        self._jobs:    list[Job]        = []
+        self._results: dict[str, dict]  = {}   # key → {latest: Job, last_success: Job|None}
+        self._log:     list[str]        = []
         self._observers: list[JobObserver] = []
         self._load()
 
@@ -163,21 +181,10 @@ class SimRunnerState:
     # Run lifecycle
     # ------------------------------------------------------------------
 
-    def start_run(self, jobs: list[Job]) -> None:
-        """Begin a new run.  Raises :exc:`RuntimeError` if already running."""
+    def add_jobs(self, jobs: list[Job]) -> None:
+        """Append new jobs to the active pool.  Safe to call while running."""
         with self._lock:
-            if self._running:
-                raise RuntimeError("A run is already in progress.")
-            self._running = True
-            self._jobs = list(jobs)
-            self._log  = []
-
-    def finish_run(self) -> None:
-        """Mark the run as finished and persist state to disk."""
-        with self._lock:
-            self._running = False
-            snapshot = self._snapshot_unsafe()
-        self._persist(snapshot)
+            self._jobs.extend(jobs)
 
     # ------------------------------------------------------------------
     # State mutations
@@ -214,7 +221,17 @@ class SimRunnerState:
                 job.url = url
             if label is not None:
                 job.label = label
-            job_copy = copy.copy(job)
+
+            # Set started_at on first transition out of PENDING
+            if old_status == JobStatus.PENDING and job.started_at is None:
+                job.started_at = time.time()
+
+            # Set completed_at and update results store on terminal transition
+            if new_status in _TERMINAL:
+                job.completed_at = time.time()
+                self._update_results(job)
+
+            job_copy = copy.deepcopy(job)
 
         self._notify(job_copy, old_status)
         return job_copy
@@ -241,9 +258,17 @@ class SimRunnerState:
         return cancelled
 
     def append_log(self, msg: str) -> None:
-        """Append *msg* to the run log."""
+        """Append *msg* to the global run log."""
         with self._lock:
             self._log.append(msg)
+
+    def append_job_log(self, job_id: str, msg: str) -> None:
+        """Append *msg* to the per-job log for *job_id*."""
+        with self._lock:
+            try:
+                self._get_job(job_id).log_lines.append(msg)
+            except KeyError:
+                pass
 
     # ------------------------------------------------------------------
     # Read-only access
@@ -252,7 +277,7 @@ class SimRunnerState:
     @property
     def running(self) -> bool:
         with self._lock:
-            return self._running
+            return any(j.status not in _TERMINAL for j in self._jobs)
 
     def snapshot(self) -> dict:
         """Return a deep copy of current state safe for JSON serialisation."""
@@ -275,25 +300,60 @@ class SimRunnerState:
                 return j
         raise KeyError(f"Job {job_id!r} not found.")
 
+    def _results_key(self, job: Job) -> str:
+        return f"{job.char_id}|{job.difficulty}|{job.build_label}"
+
+    def _update_results(self, job: Job) -> None:
+        """Caller must hold _lock.  Update persisted results store."""
+        key = self._results_key(job)
+        existing = self._results.get(key, {"last_success": None})
+        self._results[key] = {
+            "latest":       copy.deepcopy(job),
+            "last_success": copy.deepcopy(job) if job.status == JobStatus.DONE
+                            else existing.get("last_success"),
+        }
+        self._persist_results()
+
     def _snapshot_unsafe(self) -> dict:
         """Caller must hold _lock."""
+        active = [j.as_dict() for j in self._jobs if j.status not in _TERMINAL]
+        results = [
+            {
+                "key":          k,
+                "latest":       v["latest"].as_dict(),
+                "last_success": v["last_success"].as_dict() if v["last_success"] else None,
+            }
+            for k, v in self._results.items()
+        ]
         return {
-            "running": self._running,
-            "jobs":    [j.as_dict() for j in self._jobs],
-            "log":     list(self._log),
+            "running":     any(j.status not in _TERMINAL for j in self._jobs),
+            "active_jobs": active,
+            "results":     results,
+            "log":         list(self._log),
         }
 
-    def _persist(self, snapshot: dict) -> None:
+    def _persist_results(self) -> None:
+        """Caller must hold _lock."""
         try:
-            self._persist_path.write_text(json.dumps(snapshot, indent=2))
+            data = {
+                k: {
+                    "latest":       v["latest"].as_dict(),
+                    "last_success": v["last_success"].as_dict() if v["last_success"] else None,
+                }
+                for k, v in self._results.items()
+            }
+            self._persist_path.write_text(json.dumps(data, indent=2))
         except Exception as exc:
-            log.warning("Could not persist run state to %s: %s", self._persist_path, exc)
+            log.warning("Could not persist results to %s: %s", self._persist_path, exc)
 
     def _load(self) -> None:
-        """Load last-run state from disk on startup (best-effort)."""
+        """Load persisted results from disk on startup (best-effort)."""
         try:
             data = json.loads(self._persist_path.read_text())
-            self._jobs = [Job.from_dict(d) for d in data.get("jobs", [])]
-            self._log  = data.get("log", [])
+            for k, v in data.items():
+                latest = Job.from_dict(v["latest"]) if v.get("latest") else None
+                last_success = Job.from_dict(v["last_success"]) if v.get("last_success") else None
+                if latest:
+                    self._results[k] = {"latest": latest, "last_success": last_success}
         except Exception:
             pass
