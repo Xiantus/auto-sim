@@ -232,11 +232,22 @@ def submit_job(session: requests.Session, payload: dict, api_key: str | None) ->
         json.dump(payload, f, indent=2)
     log.info("Payload dumped to %s", dump_path)
 
-    resp = session.post(SUBMIT_URL, json=payload, headers=headers, timeout=60)
+    _RETRYABLE = {429, 502, 503, 504}
+    _DELAYS    = [5, 15, 30]
 
-    if resp.status_code == 429:
-        log.error("Rate-limited by Raidbots (429). Try again later.")
-        sys.exit(1)
+    resp = None
+    for attempt, delay in enumerate([0] + _DELAYS):
+        if delay:
+            log.warning("Retrying submission in %ds (attempt %d/3)...", delay, attempt)
+            time.sleep(delay)
+        resp = session.post(SUBMIT_URL, json=payload, headers=headers, timeout=60)
+        if resp.status_code not in _RETRYABLE:
+            break
+        log.warning("Raidbots returned %s — will retry.", resp.status_code)
+    else:
+        log.error("Raidbots still returned %s after %d retries: %s",
+                  resp.status_code, len(_DELAYS), resp.text[:300])
+        resp.raise_for_status()
 
     if not resp.ok:
         log.error("Raidbots error %s: %s", resp.status_code, resp.text[:300])
