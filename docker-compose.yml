@@ -19,6 +19,10 @@ services:
     environment:
       TZ: ${TZ:-UTC}
 
+    volumes:
+      - ./config.json:/app/config.json:ro
+      - ./characters.json:/app/characters.json
+      - ./last_run.json:/app/last_run.json
     # volumes are managed via Coolify → Storages tab (absolute host paths)
     # to avoid Docker auto-creating directories instead of files.
     # Add these three entries there:
