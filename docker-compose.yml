@@ -1,0 +1,62 @@
+# docker-compose.yml — Coolify / Traefik deployment
+#
+# Prerequisites (set in Coolify → Environment Variables, or a local .env file):
+#   DOMAIN          your public domain, e.g. sim.example.com
+#   TZ              timezone, e.g. Europe/Berlin   (optional)
+#
+# Persistent files:
+#   ./config.json       — copy from config.example.json and fill in secrets
+#   ./characters.json   — character presets (created automatically on first run)
+#   ./last_run.json     — job-state persistence (created automatically)
+
+services:
+  auto_sim:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: auto_sim
+
+    environment:
+      TZ: ${TZ:-UTC}
+
+    volumes:
+      # Secrets — create these files on the host before deploying
+      - ./config.json:/app/config.json:ro
+      # Mutable data — will be created on first run if absent
+      - ./characters.json:/app/characters.json
+      - ./last_run.json:/app/last_run.json
+
+    networks:
+      - coolify           # shared Traefik network managed by Coolify
+
+    restart: unless-stopped
+
+    labels:
+      # ── Traefik routing ────────────────────────────────────────────────────
+      - "traefik.enable=true"
+
+      # HTTP → HTTPS redirect (handled by Coolify's global entrypoint redirect,
+      # but included here as an explicit fallback)
+      - "traefik.http.routers.auto-sim-http.rule=Host(`${DOMAIN}`)"
+      - "traefik.http.routers.auto-sim-http.entrypoints=web"
+      - "traefik.http.routers.auto-sim-http.middlewares=auto-sim-https-redirect"
+      - "traefik.http.middlewares.auto-sim-https-redirect.redirectscheme.scheme=https"
+      - "traefik.http.middlewares.auto-sim-https-redirect.redirectscheme.permanent=true"
+
+      # HTTPS router
+      - "traefik.http.routers.auto-sim.rule=Host(`${DOMAIN}`)"
+      - "traefik.http.routers.auto-sim.entrypoints=websecure"
+      - "traefik.http.routers.auto-sim.tls=true"
+      - "traefik.http.routers.auto-sim.tls.certresolver=letsencrypt"
+
+      # Service (internal port Flask listens on)
+      - "traefik.http.services.auto-sim.loadbalancer.server.port=5000"
+
+      # Optional: restrict access to a specific IP range
+      # - "traefik.http.routers.auto-sim.middlewares=auto-sim-ipallow"
+      # - "traefik.http.middlewares.auto-sim-ipallow.ipwhitelist.sourcerange=1.2.3.4/32"
+
+
+networks:
+  coolify:
+    external: true   # Coolify creates and manages this network

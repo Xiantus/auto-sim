@@ -1,0 +1,4 @@
+flask>=3.0
+requests>=2.31
+discord.py>=2.3
+playwright>=1.44

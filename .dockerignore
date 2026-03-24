@@ -1,0 +1,28 @@
+# Secrets & local config — mount these as volumes at runtime
+config.json
+characters.json
+last_run.json
+
+# Debug / log output
+payload_debug.json
+droptimizer.log
+server.log
+*.log
+qe_debug.png
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+
+# Dev tooling
+.claude/
+.git/
+.gitignore
+*.md
+
+# OS
+.DS_Store
+Thumbs.db
