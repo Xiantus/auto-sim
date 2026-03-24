@@ -174,7 +174,7 @@ class SimulationRunner:
 
         def _qe_one(build_label: str, talent_code) -> dict:
             sim_simc = apply_talent(simc_final, talent_code) if talent_code else simc_final
-            label    = f"Heroic + Mythic{' \u2013 ' + build_label if build_label else ''}"
+            label    = f"Heroic + Mythic{' – ' + build_label if build_label else ''}"
             r = run_qe_sim(sim_simc, label=label, spec_id=spec_id,
                            timeout_minutes=self._config.timeout_minutes)
             return {"label": r.label, "url": r.url, "ok": r.ok, "error": r.error}
