@@ -55,7 +55,7 @@ header h1 { font-size: 1rem; font-weight: 700; letter-spacing: .04em; color: var
 #char-selector { display: flex; flex-direction: column; gap: 6px; margin-bottom: 14px; }
 .selector-row { display: flex; align-items: center; gap: 10px; background: var(--surf); border: 1px solid var(--border); border-radius: 7px; padding: 8px 12px; }
 .selector-row label { flex: 1; cursor: pointer; display: flex; align-items: center; gap: 8px; }
-.diff-group { display: flex; gap: 8px; align-items: center; }
+.diff-group { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
 .diff-cb { display: flex; align-items: center; gap: 5px; font-size: 12px; color: var(--sub); cursor: pointer; }
 .diff-cb input { accent-color: var(--accent); width: 14px; height: 14px; }
 input[type=checkbox] { accent-color: var(--accent); width: 15px; height: 15px; cursor: pointer; }
@@ -123,6 +123,34 @@ input[type=checkbox] { accent-color: var(--accent); width: 15px; height: 15px; c
 ::-webkit-scrollbar { width: 6px; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+/* Character groups — left panel */
+.char-group { margin-bottom: 6px; }
+.char-group-header { background: var(--surf); border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; display: flex; align-items: center; gap: 8px; cursor: pointer; transition: border-color .15s; user-select: none; }
+.char-group-header:hover { border-color: var(--accent); }
+.char-group-header.open { border-bottom-left-radius: 0; border-bottom-right-radius: 0; border-bottom-color: transparent; }
+.char-group-body { border: 1px solid var(--border); border-top: none; border-bottom-left-radius: 8px; border-bottom-right-radius: 8px; overflow: hidden; }
+.char-group-body .char-card { margin-bottom: 0; border-radius: 0; border: none; border-top: 1px solid var(--border); }
+.char-group-body .char-card:first-child { border-top: none; }
+.expand-arrow { color: var(--sub); font-size: 10px; transition: transform .15s; flex-shrink: 0; }
+.expand-arrow.open { transform: rotate(90deg); }
+.single-char { margin-bottom: 6px; }
+
+/* Selector groups — run section */
+.sel-group { display: flex; flex-direction: column; background: var(--surf); border: 1px solid var(--border); border-radius: 7px; overflow: hidden; }
+.sel-group-header { display: flex; align-items: center; gap: 10px; padding: 8px 12px; cursor: pointer; user-select: none; transition: background .1s; }
+.sel-group-header:hover { background: var(--surf2); }
+.sel-group-header .expand-arrow { margin-left: 2px; }
+.sel-group-specs { border-top: 1px solid var(--border); }
+.sel-group-specs .selector-row { border-radius: 0; border: none; border-top: 1px solid var(--border); margin-bottom: 0; padding-left: 28px; }
+.sel-group-specs .selector-row:first-child { border-top: none; }
+input[type=checkbox]:indeterminate { accent-color: var(--accent); opacity: 0.6; }
+
+/* Job groups — results section */
+.job-group { display: flex; flex-direction: column; background: var(--surf); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+.job-group-header { display: flex; align-items: center; gap: 10px; padding: 10px 14px; cursor: pointer; user-select: none; transition: background .1s; }
+.job-group-header:hover { background: var(--surf2); }
+.job-group-body .job-row { border-radius: 0; border: none; border-top: 1px solid var(--border); }
 </style>
 </head>
 <body>
@@ -238,6 +266,22 @@ let editingId = null;
 let pollTimer = null;
 let logOpen = false;
 
+// Tracks which groups are expanded (by group key = character name lowercase)
+const charListOpen  = new Set();  // Characters panel
+const selectorOpen  = new Set();  // Run selector
+const jobGroupOpen  = new Set();  // Results panel
+
+/** Group an array of chars by lowercased name → Map<name, char[]> */
+function groupByName(arr) {
+  const map = new Map();
+  for (const c of arr) {
+    const key = c.name.toLowerCase();
+    if (!map.has(key)) map.set(key, []);
+    map.get(key).push(c);
+  }
+  return map;
+}
+
 // ── Init ─────────────────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', async () => {
   await loadChars();
@@ -278,21 +322,65 @@ function renderCharList() {
     el.innerHTML = '<div style="color:var(--sub);font-size:13px;padding:8px 8px 4px">No characters yet.</div>';
     return;
   }
-  el.innerHTML = chars.map(c => {
-    const ilvl = c.ilvl || avgIlvl(c.simc_string);
-    const ilvlBadge = ilvl
-      ? ` <span style="color:var(--sub);font-size:11px;font-weight:400">· ${ilvl} ilvl</span>`
-      : ` <span id="ilvl-${c.id}" style="color:var(--sub);font-size:11px;font-weight:400"></span>`;
-    return `
-    <div class="char-card">
-      <div class="char-info">
-        <div class="char-name">${c.name} <span style="color:var(--accent);font-size:12px">${c.spec}</span>${ilvlBadge}</div>
-        <div class="char-meta">${c.region.toUpperCase()} / ${c.realm}</div>
-      </div>
-      <button class="icon-btn" title="Edit" onclick="openModal('${c.id}')">✎</button>
-      <button class="icon-btn del" title="Delete" onclick="deleteChar('${c.id}')">✕</button>
-    </div>`;
-  }).join('');
+
+  const groups = groupByName(chars);
+  let html = '';
+
+  for (const [key, group] of groups) {
+    const representative = group[0];
+    const isOpen = charListOpen.has(key);
+    const multi = group.length > 1;
+
+    if (!multi) {
+      // Single spec — render flat card (no expand)
+      const c = representative;
+      const ilvl = c.ilvl || avgIlvl(c.simc_string);
+      const ilvlBadge = ilvl
+        ? ` <span style="color:var(--sub);font-size:11px;font-weight:400">· ${ilvl} ilvl</span>`
+        : ` <span id="ilvl-${c.id}" style="color:var(--sub);font-size:11px;font-weight:400"></span>`;
+      html += `
+      <div class="single-char">
+        <div class="char-card">
+          <div class="char-info">
+            <div class="char-name">${c.name} <span style="color:var(--accent);font-size:12px">${c.spec}</span>${ilvlBadge}</div>
+            <div class="char-meta">${c.region.toUpperCase()} / ${c.realm}</div>
+          </div>
+          <button class="icon-btn" title="Edit" onclick="openModal('${c.id}')">✎</button>
+          <button class="icon-btn del" title="Delete" onclick="deleteChar('${c.id}')">✕</button>
+        </div>
+      </div>`;
+    } else {
+      // Multiple specs — grouped with expand toggle
+      const specsLabel = group.map(c => `<span style="color:var(--accent);font-size:11px">${c.spec}</span>`).join(' · ');
+      const arrowClass = isOpen ? 'expand-arrow open' : 'expand-arrow';
+      html += `
+      <div class="char-group">
+        <div class="char-group-header ${isOpen ? 'open' : ''}" onclick="toggleCharGroup('${key}')">
+          <span class="${arrowClass}">▶</span>
+          <div class="char-info" style="flex:1;min-width:0">
+            <div class="char-name">${representative.name} <span style="color:var(--sub);font-size:11px;font-weight:400">${group.length} specs</span></div>
+            <div style="font-size:11px;margin-top:2px">${specsLabel}</div>
+          </div>
+          <span style="color:var(--sub);font-size:11px">${representative.region.toUpperCase()} / ${representative.realm}</span>
+        </div>
+        ${isOpen ? `<div class="char-group-body">${group.map(c => {
+          const ilvl = c.ilvl || avgIlvl(c.simc_string);
+          const ilvlBadge = ilvl
+            ? ` <span style="color:var(--sub);font-size:11px;font-weight:400">· ${ilvl} ilvl</span>`
+            : ` <span id="ilvl-${c.id}" style="color:var(--sub);font-size:11px;font-weight:400"></span>`;
+          return `<div class="char-card">
+            <div class="char-info">
+              <div class="char-name"><span style="color:var(--accent);font-size:12px">${c.spec}</span>${ilvlBadge}</div>
+            </div>
+            <button class="icon-btn" title="Edit" onclick="openModal('${c.id}')">✎</button>
+            <button class="icon-btn del" title="Delete" onclick="deleteChar('${c.id}')">✕</button>
+          </div>`;
+        }).join('')}</div>` : ''}
+      </div>`;
+    }
+  }
+
+  el.innerHTML = html;
 
   // Fetch ilvl from armory for characters that don't have it cached yet
   chars.forEach(c => {
@@ -309,6 +397,12 @@ function renderCharList() {
   });
 }
 
+function toggleCharGroup(key) {
+  if (charListOpen.has(key)) charListOpen.delete(key);
+  else charListOpen.add(key);
+  renderCharList();
+}
+
 function renderSelector() {
   const el = document.getElementById('char-selector');
   if (!chars.length) {
@@ -316,28 +410,102 @@ function renderSelector() {
     updateGoBtn();
     return;
   }
-  el.innerHTML = chars.map(c => `
-    <div class="selector-row">
-      <label>
-        <input type="checkbox" class="char-cb" data-id="${c.id}" onchange="updateGoBtn()">
-        <span><strong>${c.name}</strong> – ${c.spec} <span style="color:var(--sub);font-size:12px">(${c.region.toUpperCase()}/${c.realm})</span></span>
-      </label>
-      <div class="diff-group">
-        <label class="diff-cb"><input type="checkbox" class="diff-h" data-id="${c.id}" checked onchange="updateGoBtn()"> Heroic</label>
-        <label class="diff-cb"><input type="checkbox" class="diff-m" data-id="${c.id}" checked onchange="updateGoBtn()"> Mythic</label>
-      </div>
-    </div>`).join('');
+
+  const groups = groupByName(chars);
+  let html = '';
+
+  for (const [key, group] of groups) {
+    const isOpen = selectorOpen.has(key);
+    const multi = group.length > 1;
+    const arrowClass = isOpen ? 'expand-arrow open' : 'expand-arrow';
+    const rep = group[0];
+
+    if (!multi) {
+      // Single spec — flat row (no grouping UI)
+      const c = rep;
+      html += `
+      <div class="selector-row">
+        <label>
+          <input type="checkbox" class="char-cb" data-id="${c.id}" onchange="updateGoBtn()">
+          <span><strong>${c.name}</strong> – ${c.spec} <span style="color:var(--sub);font-size:12px">(${c.region.toUpperCase()}/${c.realm})</span></span>
+        </label>
+        <div class="diff-group">
+          <label class="diff-cb"><input type="checkbox" class="diff-h" data-id="${c.id}" checked onchange="updateGoBtn()"> H</label>
+          <label class="diff-cb"><input type="checkbox" class="diff-m" data-id="${c.id}" checked onchange="updateGoBtn()"> M</label>
+        </div>
+      </div>`;
+    } else {
+      // Multi-spec group
+      const specsPreview = group.map(c => `<span style="color:var(--accent)">${c.spec}</span>`).join(' · ');
+      html += `
+      <div class="sel-group">
+        <div class="sel-group-header" onclick="toggleSelectorGroup('${key}')">
+          <span class="${arrowClass}">▶</span>
+          <input type="checkbox" class="group-cb" data-group="${key}" onclick="event.stopPropagation()" onchange="onGroupCbChange('${key}')">
+          <label style="flex:1;cursor:pointer;pointer-events:none">
+            <strong>${rep.name}</strong>
+            <span style="color:var(--sub);font-size:12px"> (${rep.region.toUpperCase()}/${rep.realm})</span>
+            <span style="font-size:11px;margin-left:6px">${specsPreview}</span>
+          </label>
+        </div>
+        ${isOpen ? `<div class="sel-group-specs">${group.map(c => `
+          <div class="selector-row">
+            <label>
+              <input type="checkbox" class="char-cb" data-id="${c.id}" data-group="${key}" onchange="onSpecCbChange('${key}')">
+              <span style="color:var(--accent)">${c.spec}</span>
+            </label>
+            <div class="diff-group">
+              <label class="diff-cb"><input type="checkbox" class="diff-h" data-id="${c.id}" checked onchange="updateGoBtn()"> H</label>
+              <label class="diff-cb"><input type="checkbox" class="diff-m" data-id="${c.id}" checked onchange="updateGoBtn()"> M</label>
+            </div>
+          </div>`).join('')}
+        </div>` : ''}
+      </div>`;
+    }
+  }
+
+  el.innerHTML = html;
+  updateGoBtn();
+}
+
+function toggleSelectorGroup(key) {
+  if (selectorOpen.has(key)) selectorOpen.delete(key);
+  else selectorOpen.add(key);
+  renderSelector();
+}
+
+/** Parent group checkbox toggled → check/uncheck all specs in that group */
+function onGroupCbChange(key) {
+  const groupCb = document.querySelector(`.group-cb[data-group="${key}"]`);
+  const checked = groupCb.checked;
+  document.querySelectorAll(`.char-cb[data-group="${key}"]`).forEach(cb => { cb.checked = checked; });
+  updateGoBtn();
+}
+
+/** Individual spec checkbox changed → sync parent group checkbox state */
+function onSpecCbChange(key) {
+  const specCbs = [...document.querySelectorAll(`.char-cb[data-group="${key}"]`)];
+  const groupCb = document.querySelector(`.group-cb[data-group="${key}"]`);
+  if (!groupCb) { updateGoBtn(); return; }
+  const allChecked  = specCbs.every(cb => cb.checked);
+  const noneChecked = specCbs.every(cb => !cb.checked);
+  groupCb.checked       = allChecked;
+  groupCb.indeterminate = !allChecked && !noneChecked;
   updateGoBtn();
 }
 
 function updateGoBtn() {
+  // A selection counts if the spec checkbox is checked AND at least one difficulty is checked
+  // For single-spec rows (no data-group) use .char-cb; for grouped rows also .char-cb
   const anySelected = [...document.querySelectorAll('.char-cb:checked')].some(cb => {
     const id = cb.dataset.id;
     const h = document.querySelector(`.diff-h[data-id="${id}"]`)?.checked;
     const m = document.querySelector(`.diff-m[data-id="${id}"]`)?.checked;
     return h || m;
   });
-  document.getElementById('go-btn').disabled = !anySelected;
+  // Also count group-level selections where the group is collapsed (specs not rendered)
+  const anyGroupSelected = [...document.querySelectorAll('.group-cb:checked')].length > 0;
+  document.getElementById('go-btn').disabled = !(anySelected || anyGroupSelected);
 }
 
 // ── SimC parser ───────────────────────────────────────────────────────────────
@@ -508,13 +676,32 @@ async function saveSettings() {
 // ── Run ───────────────────────────────────────────────────────────────────────
 async function startRun() {
   const selections = [];
+  const seenIds = new Set();
+
+  // Collect from visible individual spec checkboxes
   document.querySelectorAll('.char-cb:checked').forEach(cb => {
     const id = cb.dataset.id;
+    if (seenIds.has(id)) return;
+    seenIds.add(id);
     const diffs = [];
     if (document.querySelector(`.diff-h[data-id="${id}"]`)?.checked) diffs.push('raid-heroic');
     if (document.querySelector(`.diff-m[data-id="${id}"]`)?.checked) diffs.push('raid-mythic');
     if (diffs.length) selections.push({ char_id: id, difficulties: diffs });
   });
+
+  // Collect from collapsed group checkboxes (specs not rendered in DOM)
+  document.querySelectorAll('.group-cb:checked').forEach(groupCb => {
+    const key = groupCb.dataset.group;
+    // Find all chars for this group from the chars array
+    const groupChars = chars.filter(c => c.name.toLowerCase() === key);
+    for (const c of groupChars) {
+      if (seenIds.has(c.id)) continue;
+      seenIds.add(c.id);
+      selections.push({ char_id: c.id, difficulties: ['raid-heroic', 'raid-mythic'] });
+    }
+  });
+
+  if (!selections.length) { showToast('Select at least one character', true); return; }
 
   const r = await fetch('/api/run', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ selections }) });
   const d = await r.json();
@@ -549,16 +736,75 @@ async function pollStatus() {
 // ── Render jobs ───────────────────────────────────────────────────────────────
 function renderJobs(jobs) {
   if (!jobs.length) return;
-  document.getElementById('jobs-list').innerHTML = jobs.map(j => `
-    <div class="job-row">
-      <span class="job-label">${j.label}</span>
-      <span class="badge badge-${j.status}">${statusLabel(j.status)}</span>
-      ${j.sim_id && j.status === 'done' ? `<img class="sim-preview" src="https://www.raidbots.com/simbot/report/${j.sim_id}/preview.png" alt="preview" title="Sim preview" onerror="this.style.display='none'">` : ''}
-      ${j.url ? `<div class="url-actions">
-        <button class="url-btn" title="Copy link" onclick="copyUrl('${j.url}')">⎘ Copy</button>
-        <a class="url-btn" href="${j.url}" target="_blank" rel="noopener noreferrer">↗ Open</a>
-      </div>` : ''}
-    </div>`).join('');
+  window._lastJobs = jobs;
+
+  // Group jobs by character name derived from char_id first segment
+  const groupMap = new Map();
+  for (const j of jobs) {
+    const gkey = j.char_id ? j.char_id.split('-')[0] : (j.label.split('–')[0] || j.label).trim().toLowerCase();
+    const displayName = j.label.split('–')[0].trim();
+    if (!groupMap.has(gkey)) groupMap.set(gkey, { displayName, jobs: [] });
+    groupMap.get(gkey).jobs.push(j);
+  }
+
+  // Auto-expand groups with active jobs
+  for (const [key, grp] of groupMap) {
+    if (grp.jobs.some(j => ['running','fetching','submitting'].includes(j.status))) {
+      jobGroupOpen.add(key);
+    }
+  }
+
+  const terminalStatuses = new Set(['done', 'failed', 'cancelled', 'skipped']);
+  let html = '';
+
+  for (const [key, grp] of groupMap) {
+    const isOpen = jobGroupOpen.has(key);
+    const { displayName, jobs: gjobs } = grp;
+    const arrowClass = isOpen ? 'expand-arrow open' : 'expand-arrow';
+
+    if (gjobs.length === 1) {
+      html += jobRowHtml(gjobs[0]);
+    } else {
+      const doneCount   = gjobs.filter(j => j.status === 'done').length;
+      const failCount   = gjobs.filter(j => j.status === 'failed').length;
+      const runningAny  = gjobs.some(j => !terminalStatuses.has(j.status));
+      let aggStatus = runningAny ? 'running' : (failCount > 0 ? 'failed' : 'done');
+      const aggBadge = runningAny
+        ? `${doneCount}/${gjobs.length} Done`
+        : (failCount > 0 ? `${doneCount}/${gjobs.length} Done` : `${doneCount}/${gjobs.length} Done`);
+
+      html += `
+      <div class="job-group">
+        <div class="job-group-header" onclick="toggleJobGroup('${key}')">
+          <span class="${arrowClass}">▶</span>
+          <span class="job-label">${displayName}</span>
+          <span class="badge badge-${aggStatus}">${aggBadge}</span>
+        </div>
+        ${isOpen ? `<div class="job-group-body">${gjobs.map(j => jobRowHtml(j)).join('')}</div>` : ''}
+      </div>`;
+    }
+  }
+
+  document.getElementById('jobs-list').innerHTML = html;
+}
+
+function jobRowHtml(j) {
+  return `
+  <div class="job-row">
+    <span class="job-label">${j.label}</span>
+    <span class="badge badge-${j.status}">${statusLabel(j.status)}</span>
+    ${j.sim_id && j.status === 'done' ? `<img class="sim-preview" src="https://www.raidbots.com/simbot/report/${j.sim_id}/preview.png" alt="preview" title="Sim preview" onerror="this.style.display='none'">` : ''}
+    ${j.url ? `<div class="url-actions">
+      <button class="url-btn" title="Copy link" onclick="copyUrl('${j.url}')">⎘ Copy</button>
+      <a class="url-btn" href="${j.url}" target="_blank" rel="noopener noreferrer">↗ Open</a>
+    </div>` : ''}
+  </div>`;
+}
+
+function toggleJobGroup(key) {
+  if (jobGroupOpen.has(key)) jobGroupOpen.delete(key);
+  else jobGroupOpen.add(key);
+  if (window._lastJobs) renderJobs(window._lastJobs);
 }
 
 function statusLabel(s) {
