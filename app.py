@@ -123,7 +123,7 @@ def save_wow_savedvars_path(path: str) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Tooltip / SavedVariables helpers
+# Tooltip / addon data file helpers
 # ---------------------------------------------------------------------------
 
 def _parse_tooltip_data(report_json: dict) -> list[dict]:
@@ -195,11 +195,11 @@ def _parse_tooltip_data(report_json: dict) -> list[dict]:
 
 
 def _build_lua(user_id: int) -> str:
-    """Generate the Lua SavedVariables content for a user's tooltip data."""
+    """Generate the SimdragosaData.lua content for a user's tooltip data."""
     data     = db.load_tooltip_data_for_user(user_id)
     now      = datetime.utcnow().strftime("%Y-%m-%d %H:%M UTC")
     lines    = [
-        f"-- Simdragosa SavedVariables",
+        f"-- SimdragosaData.lua  (place in Interface/AddOns/Simdragosa/)",
         f"-- Generated: {now}",
         f"-- Do not edit manually — regenerated after each sim run.",
         f"",
@@ -226,11 +226,11 @@ def _build_lua(user_id: int) -> str:
 
 
 def _write_savedvariables(user_id: int) -> None:
-    """Write Simdragosa.lua to the configured WoW SavedVariables folder."""
+    """Write SimdragosaData.lua to the configured WoW addon folder."""
     wow_path = load_wow_savedvars_path()
     if not wow_path:
         return
-    target = Path(wow_path) / "Simdragosa.lua"
+    target = Path(wow_path) / "SimdragosaData.lua"
     try:
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text(_build_lua(user_id), encoding="utf-8")
@@ -562,13 +562,13 @@ def api_save_settings():
 @app.get("/api/tooltip-export")
 @require_login
 def api_tooltip_export():
-    """Return the Simdragosa.lua content as a downloadable file."""
+    """Return the SimdragosaData.lua content as a downloadable file."""
     user_id = session["user_id"]
     lua     = _build_lua(user_id)
     return Response(
         lua,
         mimetype="text/plain",
-        headers={"Content-Disposition": "attachment; filename=Simdragosa.lua"},
+        headers={"Content-Disposition": "attachment; filename=SimdragosaData.lua"},
     )
 
 

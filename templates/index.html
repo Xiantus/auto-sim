@@ -210,38 +210,34 @@ input[type=checkbox]:indeterminate { accent-color: var(--accent); opacity: 0.6; 
     <input id="raidsid-input" type="text" placeholder="Paste new raidsid here…">
   </div>
   <div class="field">
-    <label>WoW SavedVariables path <span style="color:var(--sub);font-weight:400;text-transform:none">(optional)</span><button class="help-btn" onclick="openWowPathHelp()" title="Where to find this path">?</button></label>
-    <input id="wow-path-input" type="text" placeholder="C:\World of Warcraft\_retail_\WTF\Account\NAME\SavedVariables">
+    <label>WoW addon folder path <span style="color:var(--sub);font-weight:400;text-transform:none">(optional)</span><button class="help-btn" onclick="openWowPathHelp()" title="Where to find this path">?</button></label>
+    <input id="wow-path-input" type="text" placeholder="C:\World of Warcraft\_retail_\Interface\AddOns\Simdragosa">
   </div>
   <button class="btn-primary" onclick="saveSettings()" style="width:100%;margin-bottom:8px">Save</button>
-  <button class="btn-secondary" onclick="downloadTooltipLua()" style="width:100%">⬇ Download Simdragosa.lua</button>
+  <button class="btn-secondary" onclick="downloadTooltipLua()" style="width:100%">⬇ Download SimdragosaData.lua</button>
 </div>
 
 <!-- WoW path help modal -->
 <div id="help-modal-backdrop" onclick="if(event.target===this)closeWowPathHelp()">
   <div id="help-modal">
     <button class="close-btn" onclick="closeWowPathHelp()">✕</button>
-    <h3>WoW SavedVariables path</h3>
+    <h3>WoW addon folder path</h3>
 
-    <p>This is where WoW stores addon data between sessions. Paste the full path to your <strong>SavedVariables</strong> folder and Simdragosa will write <code>Simdragosa.lua</code> there automatically after every sim run.</p>
+    <p>Paste the path to the <strong>Simdragosa addon folder</strong>. Simdragosa will write <code>SimdragosaData.lua</code> there automatically after every sim run. WoW reloads this file on every <code>/reload</code> — no more logging out to pick up new data.</p>
 
     <h4>Path structure</h4>
-    <div class="path-block"><span class="dim">World of Warcraft\</span>_retail_<span class="dim">\WTF\Account\</span><span class="hi">&lt;ACCOUNT_NAME&gt;</span><span class="dim">\SavedVariables\</span></div>
+    <div class="path-block"><span class="dim">World of Warcraft\</span>_retail_<span class="dim">\Interface\AddOns\</span><span class="hi">Simdragosa</span></div>
 
     <h4>Windows (default install)</h4>
-    <div class="path-block"><span class="dim">C:\Program Files (x86)\World of Warcraft\_retail_\WTF\Account\</span><span class="hi">&lt;ACCOUNT_NAME&gt;</span><span class="dim">\SavedVariables</span></div>
+    <div class="path-block"><span class="dim">C:\Program Files (x86)\World of Warcraft\_retail_\Interface\AddOns\</span><span class="hi">Simdragosa</span></div>
 
-    <h4>How to find your account name</h4>
-    <p>The account name folder looks like a number string, e.g. <code style="color:var(--yellow)">12345678#1</code>. The easiest way to find it:</p>
-    <p>Open Windows Explorer and navigate to <code>World of Warcraft\_retail_\WTF\Account\</code> — you will see one or more folders there. Open the one that contains a <code>SavedVariables</code> subfolder.</p>
-
-    <div class="note">💡 If you have multiple Battle.net accounts there will be multiple folders. Pick the one you play on.</div>
+    <div class="note">💡 No account name needed — the addon folder is the same for all accounts on the same PC.</div>
 
     <h4>macOS</h4>
-    <div class="path-block"><span class="dim">/Applications/World of Warcraft/_retail_/WTF/Account/</span><span class="hi">&lt;ACCOUNT_NAME&gt;</span><span class="dim">/SavedVariables</span></div>
+    <div class="path-block"><span class="dim">/Applications/World of Warcraft/_retail_/Interface/AddOns/</span><span class="hi">Simdragosa</span></div>
 
     <h4>Linux / Lutris</h4>
-    <div class="path-block"><span class="dim">~/Games/world-of-warcraft/drive_c/Program Files (x86)/World of Warcraft/_retail_/WTF/Account/</span><span class="hi">&lt;ACCOUNT_NAME&gt;</span><span class="dim">/SavedVariables</span></div>
+    <div class="path-block"><span class="dim">~/Games/world-of-warcraft/drive_c/Program Files (x86)/World of Warcraft/_retail_/Interface/AddOns/</span><span class="hi">Simdragosa</span></div>
     <p style="color:var(--sub);font-size:12px">Path varies by Lutris runner configuration. Check your Lutris game settings → Configure → System Options → Game folder.</p>
 
     <div style="margin-top:18px">
@@ -785,7 +781,7 @@ async function saveSettings() {
 async function downloadTooltipLua() {
   const a = document.createElement('a');
   a.href = '/api/tooltip-export';
-  a.download = 'Simdragosa.lua';
+  a.download = 'SimdragosaData.lua';
   a.click();
 }
 
