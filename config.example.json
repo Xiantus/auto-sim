@@ -13,6 +13,9 @@
   "discord_bot_token": "YOUR_BOT_TOKEN_HERE",
   "discord_channel_id": "YOUR_CHANNEL_ID_HERE",
 
+  "_comment_invite_code": "Shared secret for account registration. Anyone with this code can create an account.",
+  "invite_code": "YOUR_INVITE_CODE_HERE",
+
   "_comment_raidsid": "Your raidsid cookie from raidbots.com (F12 → Application → Cookies). Refresh if sims start failing.",
   "raidsid": "YOUR_RAIDSID_HERE",
 

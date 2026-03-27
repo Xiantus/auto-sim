@@ -180,7 +180,9 @@ input[type=checkbox]:indeterminate { accent-color: var(--accent); opacity: 0.6; 
 <header>
   <h1>⚡ Auto Sim</h1>
   <span id="raidsid-status"></span>
+  <span style="font-size:12px;color:var(--sub)">{{ session.username }}</span>
   <button id="settings-btn" onclick="toggleSettings()">⚙ Settings</button>
+  <a href="/logout" style="background:none;border:1px solid var(--border);color:var(--sub);border-radius:6px;padding:5px 10px;cursor:pointer;font-size:13px;text-decoration:none;" onmouseover="this.style.borderColor='var(--accent)';this.style.color='var(--text)'" onmouseout="this.style.borderColor='var(--border)';this.style.color='var(--sub)'">Log out</a>
 </header>
 
 <div id="settings-panel">

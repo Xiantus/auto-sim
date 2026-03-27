@@ -8,9 +8,9 @@ import discord
 from discord import app_commands
 
 from simulation_runner import RunnerConfig, SimulationRunner
+import db
 
 CONFIG_PATH = Path(__file__).parent / "config.json"
-CHARS_PATH  = Path(__file__).parent / "characters.json"
 
 
 # ---------------------------------------------------------------------------
@@ -22,15 +22,6 @@ def _load_config() -> dict:
         return json.loads(CONFIG_PATH.read_text())
     except Exception:
         return {}
-
-
-def _load_characters() -> list:
-    if CHARS_PATH.exists():
-        try:
-            return json.loads(CHARS_PATH.read_text())
-        except Exception:
-            pass
-    return []
 
 
 def _parse_char_label(simc: str) -> str:
@@ -91,7 +82,7 @@ async def droptimizer_cmd(
 
     cfg     = _load_config()
     config  = RunnerConfig(raidsid=cfg.get("raidsid", ""))
-    runner  = SimulationRunner(config, chars_path=CHARS_PATH)
+    runner  = SimulationRunner(config, characters=db.load_all_characters())
 
     try:
         results = await runner.run_async(simc)
