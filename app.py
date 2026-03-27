@@ -2,14 +2,18 @@
 """app.py — Auto Sim web interface"""
 
 import json
+import logging
 import secrets
 import time
 import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from datetime import timedelta
+from datetime import datetime, timedelta
 from pathlib import Path
 
-from flask import Flask, jsonify, request, render_template, session
+import requests as _requests
+from flask import Flask, jsonify, request, render_template, session, Response
+
+log = logging.getLogger(__name__)
 
 from droptimizer import (
     RAIDBOTS_BASE,
@@ -98,6 +102,143 @@ def save_raidsid(raidsid: str) -> None:
     CONFIG_PATH.write_text(json.dumps(cfg, indent=2))
 
 
+def load_wow_savedvars_path() -> str:
+    if CONFIG_PATH.exists():
+        try:
+            return json.loads(CONFIG_PATH.read_text()).get("wow_savedvars_path", "")
+        except Exception:
+            pass
+    return ""
+
+
+def save_wow_savedvars_path(path: str) -> None:
+    cfg: dict = {}
+    if CONFIG_PATH.exists():
+        try:
+            cfg = json.loads(CONFIG_PATH.read_text())
+        except Exception:
+            pass
+    cfg["wow_savedvars_path"] = path
+    CONFIG_PATH.write_text(json.dumps(cfg, indent=2))
+
+
+# ---------------------------------------------------------------------------
+# Tooltip / SavedVariables helpers
+# ---------------------------------------------------------------------------
+
+def _parse_tooltip_data(report_json: dict) -> list[dict]:
+    """Extract item upgrade entries from a Raidbots Droptimizer report JSON.
+
+    Tries multiple field-name spellings across Raidbots API versions.
+    Returns a list of {item_id, dps_gain, ilvl, item_name} dicts.
+    """
+    try:
+        players = report_json.get("sim", {}).get("players", [])
+        if not players:
+            return []
+        droptimizer = players[0].get("droptimizer", {})
+        upgrades    = droptimizer.get("upgrades", [])
+        entries = []
+        for upg in upgrades:
+            item_node = upg.get("item", {})
+            item_id  = (upg.get("itemId") or upg.get("itemID")
+                        or item_node.get("id"))
+            dps_gain = (upg.get("dpsGain") or upg.get("dps")
+                        or upg.get("upgrade") or upg.get("value"))
+            ilvl     = upg.get("ilvl") or upg.get("itemLevel")
+            name     = (upg.get("name") or upg.get("itemName")
+                        or item_node.get("name", ""))
+            if item_id and dps_gain is not None and float(dps_gain) > 0:
+                entries.append({
+                    "item_id":   int(item_id),
+                    "dps_gain":  round(float(dps_gain), 1),
+                    "ilvl":      int(ilvl) if ilvl else None,
+                    "item_name": str(name) if name else None,
+                })
+        return entries
+    except Exception as exc:
+        log.warning("tooltip parse error: %s", exc)
+        return []
+
+
+def _build_lua(user_id: int) -> str:
+    """Generate the Lua SavedVariables content for a user's tooltip data."""
+    data     = db.load_tooltip_data_for_user(user_id)
+    now      = datetime.utcnow().strftime("%Y-%m-%d %H:%M UTC")
+    lines    = [
+        f"-- Simdragosa SavedVariables",
+        f"-- Generated: {now}",
+        f"-- Do not edit manually — regenerated after each sim run.",
+        f"",
+        f"SimdragosaDB = {{",
+    ]
+    for char_key, items in sorted(data.items()):
+        lines.append(f'  ["{char_key}"] = {{')
+        for item_id, info in sorted(items.items()):
+            parts = []
+            if "heroic" in info:
+                parts.append(f"heroic={info['heroic']}")
+            if "mythic" in info:
+                parts.append(f"mythic={info['mythic']}")
+            if info.get("ilvl"):
+                parts.append(f"ilvl={info['ilvl']}")
+            if info.get("name"):
+                safe_name = info["name"].replace('"', '\\"')
+                parts.append(f'name="{safe_name}"')
+            parts.append(f'updated="{info.get("updated", "")}"')
+            lines.append(f"    [{item_id}] = {{ {', '.join(parts)} }},")
+        lines.append("  },")
+    lines.append("}")
+    return "\n".join(lines) + "\n"
+
+
+def _write_savedvariables(user_id: int) -> None:
+    """Write Simdragosa.lua to the configured WoW SavedVariables folder."""
+    wow_path = load_wow_savedvars_path()
+    if not wow_path:
+        return
+    target = Path(wow_path) / "Simdragosa.lua"
+    try:
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(_build_lua(user_id), encoding="utf-8")
+        log.info("SavedVariables written → %s", target)
+    except Exception as exc:
+        log.warning("Could not write SavedVariables: %s", exc)
+
+
+def _fetch_and_store_tooltip_data(
+    session_rb,
+    char: dict,
+    difficulty: str,
+    sim_id: str,
+    user_id: int,
+) -> None:
+    """Fetch the Raidbots report JSON, parse DPS gains, persist and write Lua."""
+    try:
+        url  = f"{RAIDBOTS_BASE}/simbot/report/{sim_id}/data.json"
+        resp = session_rb.get(url, timeout=30)
+        if not resp.ok:
+            log.warning("Could not fetch report data for %s: HTTP %s", sim_id, resp.status_code)
+            return
+        entries = _parse_tooltip_data(resp.json())
+        if not entries:
+            log.info("No droptimizer upgrades found in report %s", sim_id)
+            return
+        sim_date = datetime.utcnow().strftime("%Y-%m-%d")
+        db.upsert_tooltip_entries(
+            user_id=user_id,
+            char_name=char["name"],
+            realm=char.get("realm", ""),
+            difficulty=difficulty,
+            entries=entries,
+            sim_date=sim_date,
+        )
+        log.info("Stored %d tooltip entries for %s (%s)", len(entries), char["name"], difficulty)
+        _write_savedvariables(user_id)
+    except Exception as exc:
+        log.warning("tooltip data fetch/store failed: %s", exc)
+
+
 # ---------------------------------------------------------------------------
 # Background sim runner
 # ---------------------------------------------------------------------------
@@ -121,7 +262,7 @@ _SPEC_ID_TO_NAME: dict[int, str] = {
 _VALID_SPEC_NAMES: set[str] = set(_SPEC_ID_TO_NAME.values())
 
 
-def _run_one(job: Job, char: dict, raidsid: str, static) -> None:
+def _run_one(job: Job, char: dict, raidsid: str, static, user_id: int | None = None) -> None:
     jid     = job.id
     tag     = job.label
     spec_id = char.get("spec_id", 63)
@@ -196,6 +337,13 @@ def _run_one(job: Job, char: dict, raidsid: str, static) -> None:
     if result.ok:
         _jlog(jid, f"[{tag}] Done.")
         state.transition(jid, JobStatus.DONE, url=result.url)
+        if user_id is not None:
+            sim_id = result.url.rstrip("/").split("/")[-1]
+            threading.Thread(
+                target=_fetch_and_store_tooltip_data,
+                args=(session_rb, char, job.difficulty, sim_id, user_id),
+                daemon=True,
+            ).start()
     else:
         if result.error:
             _jlog(jid, f"[{tag}] {result.error}")
@@ -203,7 +351,7 @@ def _run_one(job: Job, char: dict, raidsid: str, static) -> None:
         state.transition(jid, JobStatus.FAILED, url=result.url or "")
 
 
-def _run_batch(jobs: list[Job], chars_by_id: dict, raidsid: str) -> None:
+def _run_batch(jobs: list[Job], chars_by_id: dict, raidsid: str, user_id: int | None = None) -> None:
     try:
         init_session = make_raidbots_session(raidsid)
 
@@ -213,7 +361,7 @@ def _run_batch(jobs: list[Job], chars_by_id: dict, raidsid: str) -> None:
 
         with ThreadPoolExecutor(max_workers=len(jobs)) as pool:
             futures = {
-                pool.submit(_run_one, job, chars_by_id[job.char_id], raidsid, static): job
+                pool.submit(_run_one, job, chars_by_id[job.char_id], raidsid, static, user_id): job
                 for job in jobs
             }
             for future in as_completed(futures):
@@ -357,9 +505,14 @@ def api_get_ilvl(char_id):
 @app.get("/api/settings")
 @require_login
 def api_get_settings():
-    sid = load_raidsid()
-    masked = sid[:12] + "…" if len(sid) > 12 else sid
-    return jsonify({"raidsid_masked": masked, "has_raidsid": bool(sid)})
+    sid      = load_raidsid()
+    masked   = sid[:12] + "…" if len(sid) > 12 else sid
+    wow_path = load_wow_savedvars_path()
+    return jsonify({
+        "raidsid_masked":    masked,
+        "has_raidsid":       bool(sid),
+        "wow_savedvars_path": wow_path,
+    })
 
 
 @app.post("/api/settings")
@@ -368,7 +521,22 @@ def api_save_settings():
     data = request.json
     if "raidsid" in data:
         save_raidsid(data["raidsid"])
+    if "wow_savedvars_path" in data:
+        save_wow_savedvars_path(data["wow_savedvars_path"])
     return jsonify({"ok": True})
+
+
+@app.get("/api/tooltip-export")
+@require_login
+def api_tooltip_export():
+    """Return the Simdragosa.lua content as a downloadable file."""
+    user_id = session["user_id"]
+    lua     = _build_lua(user_id)
+    return Response(
+        lua,
+        mimetype="text/plain",
+        headers={"Content-Disposition": "attachment; filename=Simdragosa.lua"},
+    )
 
 
 @app.post("/api/run")
@@ -406,7 +574,11 @@ def api_run():
         return jsonify({"error": "Nothing selected"}), 400
 
     state.add_jobs(jobs)
-    threading.Thread(target=_run_batch, args=(jobs, chars_by_id, load_raidsid()), daemon=True).start()
+    threading.Thread(
+        target=_run_batch,
+        args=(jobs, chars_by_id, load_raidsid(), session["user_id"]),
+        daemon=True,
+    ).start()
     return jsonify({"ok": True})
 
 

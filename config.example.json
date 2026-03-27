@@ -16,6 +16,9 @@
   "_comment_invite_code": "Shared secret for account registration. Anyone with this code can create an account.",
   "invite_code": "YOUR_INVITE_CODE_HERE",
 
+  "_comment_wow": "Optional: full path to your WoW SavedVariables folder. When set, Simdragosa.lua is written automatically after each sim. Example (Windows): C:\\Program Files (x86)\\World of Warcraft\\_retail_\\WTF\\Account\\YOUR_ACCOUNT\\SavedVariables",
+  "wow_savedvars_path": "",
+
   "_comment_raidsid": "Your raidsid cookie from raidbots.com (F12 → Application → Cookies). Refresh if sims start failing.",
   "raidsid": "YOUR_RAIDSID_HERE",
 

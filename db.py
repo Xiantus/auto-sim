@@ -53,6 +53,20 @@ def init_db() -> None:
                 PRIMARY KEY (id, user_id)
             )
         """)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS tooltip_data (
+                item_id    INTEGER NOT NULL,
+                user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                char_name  TEXT    NOT NULL,
+                realm      TEXT    NOT NULL,
+                difficulty TEXT    NOT NULL,
+                dps_gain   REAL    NOT NULL,
+                ilvl       INTEGER,
+                item_name  TEXT,
+                sim_date   TEXT    NOT NULL,
+                PRIMARY KEY (item_id, user_id, char_name, difficulty)
+            )
+        """)
 
 
 # ---------------------------------------------------------------------------
@@ -157,3 +171,60 @@ def delete_character(user_id: int, char_id: str) -> None:
             "DELETE FROM characters WHERE id = ? AND user_id = ?",
             (char_id, user_id),
         )
+
+
+# ---------------------------------------------------------------------------
+# Tooltip data helpers
+# ---------------------------------------------------------------------------
+
+def upsert_tooltip_entries(
+    user_id: int,
+    char_name: str,
+    realm: str,
+    difficulty: str,
+    entries: list[dict],
+    sim_date: str,
+) -> None:
+    """Bulk-upsert item DPS gains for one character + difficulty from a completed sim."""
+    with _connect() as conn:
+        for e in entries:
+            conn.execute("""
+                INSERT INTO tooltip_data
+                    (item_id, user_id, char_name, realm, difficulty,
+                     dps_gain, ilvl, item_name, sim_date)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(item_id, user_id, char_name, difficulty) DO UPDATE SET
+                    dps_gain  = excluded.dps_gain,
+                    ilvl      = excluded.ilvl,
+                    item_name = excluded.item_name,
+                    sim_date  = excluded.sim_date
+            """, (
+                e["item_id"], user_id, char_name, realm, difficulty,
+                e["dps_gain"], e.get("ilvl"), e.get("item_name"), sim_date,
+            ))
+
+
+def load_tooltip_data_for_user(user_id: int) -> dict:
+    """Return {char_key: {item_id: {difficulty: dps_gain, ilvl, name, date}}} for Lua export."""
+    with _connect() as conn:
+        rows = conn.execute(
+            """SELECT char_name, realm, difficulty, item_id, dps_gain, ilvl, item_name, sim_date
+               FROM tooltip_data WHERE user_id = ?
+               ORDER BY char_name, item_id""",
+            (user_id,),
+        ).fetchall()
+
+    result: dict = {}
+    for r in rows:
+        key = f"{r['char_name']}-{r['realm'].replace(' ', '')}"
+        result.setdefault(key, {})
+        item_id = r["item_id"]
+        result[key].setdefault(item_id, {
+            "ilvl": r["ilvl"],
+            "name": r["item_name"] or "",
+            "updated": r["sim_date"],
+        })
+        # Map difficulty string to short key used in Lua
+        diff_key = "heroic" if "heroic" in r["difficulty"] else "mythic"
+        result[key][item_id][diff_key] = r["dps_gain"]
+    return result
