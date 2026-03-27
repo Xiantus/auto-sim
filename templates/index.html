@@ -105,6 +105,8 @@ input[type=checkbox] { accent-color: var(--accent); width: 15px; height: 15px; c
 .modal-actions { display: flex; gap: 10px; margin-top: 20px; justify-content: flex-end; }
 .btn-primary { background: var(--accent); color: #fff; border: none; border-radius: 7px; padding: 8px 20px; font-size: 13px; font-weight: 700; cursor: pointer; }
 .btn-primary:hover { background: var(--acc-h); }
+.btn-secondary { background: var(--surf2); color: var(--text); border: 1px solid var(--border); border-radius: 7px; padding: 8px 20px; font-size: 13px; font-weight: 600; cursor: pointer; }
+.btn-secondary:hover { border-color: var(--accent); color: var(--acc-h); }
 .btn-cancel { background: none; border: 1px solid var(--border); color: var(--sub); border-radius: 7px; padding: 8px 16px; font-size: 13px; cursor: pointer; }
 .btn-cancel:hover { border-color: var(--accent); color: var(--text); }
 
@@ -191,7 +193,12 @@ input[type=checkbox]:indeterminate { accent-color: var(--accent); opacity: 0.6; 
     <label>raidsid cookie</label>
     <input id="raidsid-input" type="text" placeholder="Paste new raidsid here…">
   </div>
-  <button class="btn-primary" onclick="saveSettings()" style="width:100%">Save</button>
+  <div class="field">
+    <label>WoW SavedVariables path <span style="color:var(--sub);font-weight:400;text-transform:none">(optional — auto-write Simdragosa.lua)</span></label>
+    <input id="wow-path-input" type="text" placeholder="C:\World of Warcraft\_retail_\WTF\Account\NAME\SavedVariables">
+  </div>
+  <button class="btn-primary" onclick="saveSettings()" style="width:100%;margin-bottom:8px">Save</button>
+  <button class="btn-secondary" onclick="downloadTooltipLua()" style="width:100%">⬇ Download Simdragosa.lua</button>
 </div>
 
 <div class="main">
@@ -702,6 +709,9 @@ async function refreshSettings() {
   const r = await fetch('/api/settings');
   const d = await r.json();
   document.getElementById('raidsid-status').textContent = d.has_raidsid ? `raidsid: ${d.raidsid_masked}` : 'no raidsid';
+  if (d.wow_savedvars_path) {
+    document.getElementById('wow-path-input').placeholder = d.wow_savedvars_path;
+  }
 }
 
 function toggleSettings() {
@@ -709,13 +719,25 @@ function toggleSettings() {
 }
 
 async function saveSettings() {
-  const val = document.getElementById('raidsid-input').value.trim();
-  if (!val) return;
-  await fetch('/api/settings', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ raidsid: val }) });
-  document.getElementById('raidsid-input').value = '';
+  const raidsid  = document.getElementById('raidsid-input').value.trim();
+  const wowPath  = document.getElementById('wow-path-input').value.trim();
+  if (!raidsid && !wowPath) return;
+  const payload  = {};
+  if (raidsid) payload.raidsid = raidsid;
+  if (wowPath) payload.wow_savedvars_path = wowPath;
+  await fetch('/api/settings', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(payload) });
+  document.getElementById('raidsid-input').value  = '';
+  document.getElementById('wow-path-input').value = '';
   document.getElementById('settings-panel').classList.remove('open');
   await refreshSettings();
-  showToast('raidsid saved');
+  showToast('Settings saved');
+}
+
+async function downloadTooltipLua() {
+  const a = document.createElement('a');
+  a.href = '/api/tooltip-export';
+  a.download = 'Simdragosa.lua';
+  a.click();
 }
 
 // ── Run ───────────────────────────────────────────────────────────────────────
