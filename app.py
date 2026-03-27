@@ -2,12 +2,14 @@
 """app.py — Auto Sim web interface"""
 
 import json
+import secrets
 import time
 import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from datetime import timedelta
 from pathlib import Path
 
-from flask import Flask, jsonify, request, render_template
+from flask import Flask, jsonify, request, render_template, session
 
 from droptimizer import (
     RAIDBOTS_BASE,
@@ -20,13 +22,40 @@ from payload_builder import CharacterIdentity, DIFFICULTY_MAP, SimTarget
 from raidbots_session import make_raidbots_session
 from sim_router import diff_label as get_diff_label, is_healer, run_qe_sim, run_raidbots_sim
 from job_state import Job, JobStatus, SimRunnerState
+import db
+from auth import auth_bp, require_login
 
 app = Flask(__name__)
+app.register_blueprint(auth_bp)
 
-CHARS_PATH   = Path(__file__).parent / "characters.json"
 CONFIG_PATH  = Path(__file__).parent / "config.json"
 RESULTS_PATH = Path(__file__).parent / "results.json"
 REPORT_URL   = RAIDBOTS_BASE + "/simbot/report/{sim_id}"
+
+# ---------------------------------------------------------------------------
+# Secret key — generated once and persisted in config.json
+# ---------------------------------------------------------------------------
+
+def _get_or_create_secret_key() -> str:
+    cfg: dict = {}
+    if CONFIG_PATH.exists():
+        try:
+            cfg = json.loads(CONFIG_PATH.read_text())
+        except Exception:
+            pass
+    if "secret_key" not in cfg:
+        cfg["secret_key"] = secrets.token_hex(32)
+        try:
+            CONFIG_PATH.write_text(json.dumps(cfg, indent=2))
+        except Exception:
+            pass
+    return cfg["secret_key"]
+
+
+app.secret_key = _get_or_create_secret_key()
+app.permanent_session_lifetime = timedelta(days=30)
+
+db.init_db()
 
 # ---------------------------------------------------------------------------
 # Global run state
@@ -45,42 +74,9 @@ def _jlog(job_id: str, msg: str) -> None:
     state.append_log(msg)
 
 
-
 # ---------------------------------------------------------------------------
-# Persistence
+# Config helpers
 # ---------------------------------------------------------------------------
-
-def load_characters() -> list:
-    if CHARS_PATH.exists():
-        return json.loads(CHARS_PATH.read_text())
-    # Seed from existing config.json on first run
-    if CONFIG_PATH.exists():
-        try:
-            cfg  = json.loads(CONFIG_PATH.read_text())
-            char = cfg.get("character", {})
-            simc = cfg.get("simc_string", "")
-            runs = cfg.get("runs", [])
-            if char and simc and runs:
-                first = runs[0]
-                return [{
-                    "id":            f"{char['name'].lower()}-{first.get('spec','').lower()}",
-                    "name":          char["name"],
-                    "realm":         char["realm"],
-                    "region":        char["region"],
-                    "spec":          first.get("spec", ""),
-                    "spec_id":       first.get("spec_id", 63),
-                    "loot_spec_id":  first.get("loot_spec_id", first.get("spec_id", 63)),
-                    "crafted_stats": first.get("crafted_stats", "36/49"),
-                    "simc_string":   simc,
-                }]
-        except Exception:
-            pass
-    return []
-
-
-def save_characters(chars: list) -> None:
-    CHARS_PATH.write_text(json.dumps(chars, indent=2))
-
 
 def load_raidsid() -> str:
     if CONFIG_PATH.exists():
@@ -106,7 +102,6 @@ def save_raidsid(raidsid: str) -> None:
 # Background sim runner
 # ---------------------------------------------------------------------------
 
-# spec_id → Raidbots spec name (used as fallback when char["spec"] is wrong)
 _SPEC_ID_TO_NAME: dict[int, str] = {
     62: "Arcane", 63: "Fire", 64: "Frost",
     65: "Holy", 66: "Protection", 70: "Retribution",
@@ -126,16 +121,12 @@ _SPEC_ID_TO_NAME: dict[int, str] = {
 _VALID_SPEC_NAMES: set[str] = set(_SPEC_ID_TO_NAME.values())
 
 
-
 def _run_one(job: Job, char: dict, raidsid: str, static) -> None:
     jid     = job.id
     tag     = job.label
     spec_id = char.get("spec_id", 63)
 
-    # ── Healer: use QE Upgrade Finder (one combined Heroic+Mythic report) ────
     if is_healer(spec_id):
-        # QE runs both difficulties in one session; only process the heroic job
-        # and skip the mythic duplicate to avoid running the browser twice.
         if job.difficulty != "raid-heroic":
             state.transition(jid, JobStatus.SKIPPED)
             return
@@ -156,13 +147,12 @@ def _run_one(job: Job, char: dict, raidsid: str, static) -> None:
             state.transition(jid, JobStatus.FAILED)
         return
 
-    # ── DPS / Tank: use Raidbots Droptimizer ────────────────────────────────
-    session = make_raidbots_session(raidsid)
+    session_rb = make_raidbots_session(raidsid)
 
     state.transition(jid, JobStatus.FETCHING)
     _jlog(jid, f"[{tag}] Fetching character from armory...")
     try:
-        character = fetch_character(session, char["region"], char["realm"], char["name"])
+        character = fetch_character(session_rb, char["region"], char["realm"], char["name"])
     except Exception as e:
         _jlog(jid, f"[{tag}] Character fetch failed: {e}")
         state.transition(jid, JobStatus.FAILED)
@@ -172,9 +162,6 @@ def _run_one(job: Job, char: dict, raidsid: str, static) -> None:
     if job.talent_code:
         simc = apply_talent(simc, job.talent_code)
 
-    # Derive the canonical spec name from spec_id if char["spec"] is not a
-    # recognised Raidbots spec name (e.g. it was accidentally set to the
-    # character name).
     spec_name = char["spec"].capitalize()
     if spec_name not in _VALID_SPEC_NAMES:
         spec_name = _SPEC_ID_TO_NAME.get(spec_id, "Fire")
@@ -201,7 +188,7 @@ def _run_one(job: Job, char: dict, raidsid: str, static) -> None:
     state.transition(jid, JobStatus.SUBMITTING)
     _jlog(jid, f"[{tag}] Submitting...")
     result = run_raidbots_sim(
-        session, identity, target, character, static,
+        session_rb, identity, target, character, static,
         report_url_template=REPORT_URL,
         timeout_minutes=30,
         on_submitted=_on_submitted,
@@ -241,7 +228,7 @@ def _run_batch(jobs: list[Job], chars_by_id: dict, raidsid: str) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Helpers
+# Gear propagation helpers
 # ---------------------------------------------------------------------------
 
 _GEAR_SLOTS = ["head", "neck", "shoulder", "back", "chest", "wrist", "hands",
@@ -249,7 +236,6 @@ _GEAR_SLOTS = ["head", "neck", "shoulder", "back", "chest", "wrist", "hands",
                "trinket1", "trinket2", "mainHand", "offHand"]
 
 def _calc_ilvl(items: dict) -> float | None:
-    """Calculate average equipped ilvl with 2 dp, counting 2H weapons twice."""
     if not items:
         return None
     total, count = 0, 0
@@ -257,7 +243,7 @@ def _calc_ilvl(items: dict) -> float | None:
     for slot in _GEAR_SLOTS:
         item = items.get(slot)
         if slot == "offHand" and item is None and isinstance(main, dict) and main.get("inventoryType") == 17:
-            item = main  # 2H weapon fills the off-hand slot too
+            item = main
         if isinstance(item, dict) and item.get("itemLevel"):
             total += item["itemLevel"]
             count += 1
@@ -298,14 +284,13 @@ def _propagate_gear(updated: dict, chars: list) -> list[str]:
         if c.get("exclude_from_item_updates"):
             continue
         existing_ilvl = c.get("ilvl")
-        # Only propagate if ilvl differs (or either side has no ilvl cached)
         if updated_ilvl and existing_ilvl and updated_ilvl == existing_ilvl:
             continue
         old_gear = _simc_gear_lines(c.get("simc_string", ""))
         if old_gear == new_gear:
             continue
         c["simc_string"] = _replace_simc_gear(c["simc_string"], new_gear)
-        c["ilvl"] = updated_ilvl  # carry over cached ilvl
+        c["ilvl"] = updated_ilvl
         changed.append(c["id"])
     return changed
 
@@ -315,62 +300,62 @@ def _propagate_gear(updated: dict, chars: list) -> list[str]:
 # ---------------------------------------------------------------------------
 
 @app.get("/")
+@require_login
 def index():
     return render_template("index.html")
 
 
 @app.get("/api/characters")
+@require_login
 def api_get_characters():
-    return jsonify(load_characters())
+    return jsonify(db.load_characters(session["user_id"]))
 
 
 @app.post("/api/characters")
+@require_login
 def api_upsert_character():
+    user_id = session["user_id"]
     char = request.json
     char["id"] = f"{char['name'].lower()}-{char['spec'].lower()}"
-    chars = load_characters()
-    idx = next((i for i, c in enumerate(chars) if c["id"] == char["id"]), None)
-    if idx is not None:
-        chars[idx] = char
-    else:
-        chars.append(char)
+    db.upsert_character(user_id, char)
+    chars = db.load_characters(user_id)
     propagated = _propagate_gear(char, chars)
-    save_characters(chars)
+    for c in chars:
+        if c["id"] in propagated:
+            db.upsert_character(user_id, c)
     return jsonify({"char": char, "propagated": propagated})
 
 
 @app.delete("/api/characters/<char_id>")
+@require_login
 def api_delete_character(char_id):
-    save_characters([c for c in load_characters() if c["id"] != char_id])
+    db.delete_character(session["user_id"], char_id)
     return jsonify({"ok": True})
 
 
 @app.get("/api/ilvl/<char_id>")
+@require_login
 def api_get_ilvl(char_id):
-    chars = load_characters()
+    user_id = session["user_id"]
+    chars = db.load_characters(user_id)
     char  = next((c for c in chars if c["id"] == char_id), None)
     if not char:
         return jsonify({"error": "not found"}), 404
-    # Return cached value if already stored
     if char.get("ilvl"):
         return jsonify({"ilvl": char["ilvl"]})
-    # Fetch from armory
     try:
-        session = make_raidbots_session(load_raidsid())
-        data = fetch_character(session, char["region"], char["realm"], char["name"])
+        rb_session = make_raidbots_session(load_raidsid())
+        data = fetch_character(rb_session, char["region"], char["realm"], char["name"])
         ilvl = _calc_ilvl(data.get("items", {}))
         if ilvl:
-            # Cache in character profile
-            for c in chars:
-                if c["id"] == char_id:
-                    c["ilvl"] = ilvl
-            save_characters(chars)
+            db.update_character_ilvl(user_id, char_id, ilvl)
         return jsonify({"ilvl": ilvl})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
 
 @app.get("/api/settings")
+@require_login
 def api_get_settings():
     sid = load_raidsid()
     masked = sid[:12] + "…" if len(sid) > 12 else sid
@@ -378,6 +363,7 @@ def api_get_settings():
 
 
 @app.post("/api/settings")
+@require_login
 def api_save_settings():
     data = request.json
     if "raidsid" in data:
@@ -386,9 +372,11 @@ def api_save_settings():
 
 
 @app.post("/api/run")
+@require_login
 def api_run():
+    user_id     = session["user_id"]
     selections  = request.json.get("selections", [])
-    chars_all   = load_characters()
+    chars_all   = db.load_characters(user_id)
     chars_by_id = {c["id"]: c for c in chars_all}
 
     jobs: list[Job] = []
@@ -397,9 +385,7 @@ def api_run():
         if not char:
             continue
 
-        # Detect named talent builds (Raid / ST) in the SimC string
         talent_builds = find_talent_builds(char.get("simc_string", ""))
-        # If no named builds found, run with the single active talent (None = no override)
         if not talent_builds:
             talent_builds = {"": None}
 
@@ -425,6 +411,7 @@ def api_run():
 
 
 @app.get("/api/status")
+@require_login
 def api_status():
     return jsonify(state.snapshot())
 
@@ -432,13 +419,12 @@ def api_status():
 if __name__ == "__main__":
     import webbrowser, threading as _t
 
-    # Start Discord bot if token is configured
     try:
-        import discord_bot as _db
+        import discord_bot as _db_mod
         _cfg = json.loads(CONFIG_PATH.read_text()) if CONFIG_PATH.exists() else {}
         _bot_token = _cfg.get("discord_bot_token")
         if _bot_token:
-            _t.Thread(target=_db.start, args=(_bot_token,), daemon=True).start()
+            _t.Thread(target=_db_mod.start, args=(_bot_token,), daemon=True).start()
     except Exception as _e:
         print(f"[discord] Bot not started: {_e}")
 

@@ -99,17 +99,21 @@ class SimulationRunner:
 
     Args:
         config:      Immutable run parameters.
+        characters:  Pre-loaded list of character dicts for preset resolution.
+                     If provided, ``chars_path`` is ignored.
         chars_path:  Path to ``characters.json`` for preset resolution.
                      Defaults to the file next to this module.
     """
 
     def __init__(
         self,
-        config:     RunnerConfig = RunnerConfig(),
-        chars_path: Path         = _DEFAULT_CHARS_PATH,
+        config:     RunnerConfig  = RunnerConfig(),
+        characters: list | None   = None,
+        chars_path: Path          = _DEFAULT_CHARS_PATH,
     ) -> None:
-        self._config     = config
-        self._chars_path = chars_path
+        self._config      = config
+        self._characters  = characters
+        self._chars_path  = chars_path
 
     # ------------------------------------------------------------------
     # Public API
@@ -147,6 +151,8 @@ class SimulationRunner:
     # ------------------------------------------------------------------
 
     def _load_characters(self) -> list:
+        if self._characters is not None:
+            return self._characters
         try:
             return json.loads(self._chars_path.read_text())
         except Exception:
