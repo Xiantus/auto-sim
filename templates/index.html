@@ -115,6 +115,22 @@ input[type=checkbox] { accent-color: var(--accent); width: 15px; height: 15px; c
 #settings-panel.open { display: block; }
 #settings-panel h4 { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .08em; color: var(--sub); margin-bottom: 10px; }
 #settings-panel .field { margin-bottom: 10px; }
+
+/* Help modal */
+#help-modal-backdrop { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.55); z-index: 100; align-items: center; justify-content: center; }
+#help-modal-backdrop.open { display: flex; }
+#help-modal { background: var(--surf); border: 1px solid var(--border); border-radius: 12px; padding: 24px 26px; width: 100%; max-width: 460px; max-height: 90vh; overflow-y: auto; position: relative; }
+#help-modal h3 { font-size: .95rem; font-weight: 700; color: var(--acc-h); margin-bottom: 16px; }
+#help-modal h4 { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .08em; color: var(--sub); margin: 16px 0 6px; }
+#help-modal p { color: var(--text); font-size: 13px; line-height: 1.6; margin-bottom: 8px; }
+#help-modal .path-block { background: var(--surf2); border: 1px solid var(--border); border-radius: 7px; padding: 10px 13px; font-family: 'Cascadia Code', 'Consolas', monospace; font-size: 12px; color: var(--acc-h); line-height: 1.8; white-space: pre-wrap; word-break: break-all; margin-bottom: 8px; }
+#help-modal .path-block .dim { color: var(--sub); }
+#help-modal .path-block .hi  { color: var(--yellow); }
+#help-modal .note { background: #1e2a1e; border: 1px solid #2e4a2e; border-radius: 7px; padding: 9px 12px; font-size: 12px; color: #a0d0a0; margin-bottom: 8px; }
+#help-modal .close-btn { position: absolute; top: 14px; right: 16px; background: none; border: none; color: var(--sub); font-size: 18px; cursor: pointer; line-height: 1; padding: 2px 6px; border-radius: 4px; }
+#help-modal .close-btn:hover { color: var(--text); background: var(--surf2); }
+.help-btn { background: none; border: 1px solid var(--border); color: var(--sub); border-radius: 50%; width: 16px; height: 16px; font-size: 10px; font-weight: 700; cursor: pointer; line-height: 1; padding: 0; margin-left: 5px; vertical-align: middle; }
+.help-btn:hover { border-color: var(--accent); color: var(--acc-h); }
 #settings-panel input { width: 100%; }
 
 /* Toast */
@@ -194,11 +210,44 @@ input[type=checkbox]:indeterminate { accent-color: var(--accent); opacity: 0.6; 
     <input id="raidsid-input" type="text" placeholder="Paste new raidsid here…">
   </div>
   <div class="field">
-    <label>WoW SavedVariables path <span style="color:var(--sub);font-weight:400;text-transform:none">(optional — auto-write Simdragosa.lua)</span></label>
+    <label>WoW SavedVariables path <span style="color:var(--sub);font-weight:400;text-transform:none">(optional)</span><button class="help-btn" onclick="openWowPathHelp()" title="Where to find this path">?</button></label>
     <input id="wow-path-input" type="text" placeholder="C:\World of Warcraft\_retail_\WTF\Account\NAME\SavedVariables">
   </div>
   <button class="btn-primary" onclick="saveSettings()" style="width:100%;margin-bottom:8px">Save</button>
   <button class="btn-secondary" onclick="downloadTooltipLua()" style="width:100%">⬇ Download Simdragosa.lua</button>
+</div>
+
+<!-- WoW path help modal -->
+<div id="help-modal-backdrop" onclick="if(event.target===this)closeWowPathHelp()">
+  <div id="help-modal">
+    <button class="close-btn" onclick="closeWowPathHelp()">✕</button>
+    <h3>WoW SavedVariables path</h3>
+
+    <p>This is where WoW stores addon data between sessions. Paste the full path to your <strong>SavedVariables</strong> folder and Simdragosa will write <code>Simdragosa.lua</code> there automatically after every sim run.</p>
+
+    <h4>Path structure</h4>
+    <div class="path-block"><span class="dim">World of Warcraft\</span>_retail_<span class="dim">\WTF\Account\</span><span class="hi">&lt;ACCOUNT_NAME&gt;</span><span class="dim">\SavedVariables\</span></div>
+
+    <h4>Windows (default install)</h4>
+    <div class="path-block"><span class="dim">C:\Program Files (x86)\World of Warcraft\_retail_\WTF\Account\</span><span class="hi">&lt;ACCOUNT_NAME&gt;</span><span class="dim">\SavedVariables</span></div>
+
+    <h4>How to find your account name</h4>
+    <p>The account name folder looks like a number string, e.g. <code style="color:var(--yellow)">12345678#1</code>. The easiest way to find it:</p>
+    <p>Open Windows Explorer and navigate to <code>World of Warcraft\_retail_\WTF\Account\</code> — you will see one or more folders there. Open the one that contains a <code>SavedVariables</code> subfolder.</p>
+
+    <div class="note">💡 If you have multiple Battle.net accounts there will be multiple folders. Pick the one you play on.</div>
+
+    <h4>macOS</h4>
+    <div class="path-block"><span class="dim">/Applications/World of Warcraft/_retail_/WTF/Account/</span><span class="hi">&lt;ACCOUNT_NAME&gt;</span><span class="dim">/SavedVariables</span></div>
+
+    <h4>Linux / Lutris</h4>
+    <div class="path-block"><span class="dim">~/Games/world-of-warcraft/drive_c/Program Files (x86)/World of Warcraft/_retail_/WTF/Account/</span><span class="hi">&lt;ACCOUNT_NAME&gt;</span><span class="dim">/SavedVariables</span></div>
+    <p style="color:var(--sub);font-size:12px">Path varies by Lutris runner configuration. Check your Lutris game settings → Configure → System Options → Game folder.</p>
+
+    <div style="margin-top:18px">
+      <button class="btn-primary" onclick="closeWowPathHelp()" style="width:100%">Got it</button>
+    </div>
+  </div>
 </div>
 
 <div class="main">
@@ -738,6 +787,13 @@ async function downloadTooltipLua() {
   a.href = '/api/tooltip-export';
   a.download = 'Simdragosa.lua';
   a.click();
+}
+
+function openWowPathHelp() {
+  document.getElementById('help-modal-backdrop').classList.add('open');
+}
+function closeWowPathHelp() {
+  document.getElementById('help-modal-backdrop').classList.remove('open');
 }
 
 // ── Run ───────────────────────────────────────────────────────────────────────
