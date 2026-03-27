@@ -216,7 +216,7 @@ def load_tooltip_data_for_user(user_id: int) -> dict:
 
     result: dict = {}
     for r in rows:
-        key = f"{r['char_name']}-{r['realm'].replace(' ', '')}"
+        key = f"{r['char_name']}-{r['realm'].replace(' ', '').title()}"
         result.setdefault(key, {})
         item_id = r["item_id"]
         result[key].setdefault(item_id, {
