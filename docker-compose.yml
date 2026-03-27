@@ -5,9 +5,9 @@
 #   TZ              timezone, e.g. Europe/Berlin   (optional)
 #
 # Persistent files:
-#   ./config.json       — copy from config.example.json and fill in secrets
-#   ./characters.json   — character presets (created automatically on first run)
-#   ./last_run.json     — job-state persistence (created automatically)
+#   ./config.json   — copy from config.example.json and fill in secrets
+#   ./autosim.db    — SQLite DB: users, characters, tooltip data (created automatically)
+#   ./results.json  — job-state persistence (created automatically)
 
 services:
   auto_sim:
@@ -24,14 +24,14 @@ services:
 
     volumes:
       - ./config.json:/app/config.json:ro
-      - ./characters.json:/app/characters.json
-      - ./last_run.json:/app/last_run.json
+      - ./autosim.db:/app/autosim.db
+      - ./results.json:/app/results.json
     # volumes are managed via Coolify → Storages tab (absolute host paths)
     # to avoid Docker auto-creating directories instead of files.
     # Add these three entries there:
-    #   /path/on/server/config.json     → /app/config.json     (read-only)
-    #   /path/on/server/characters.json → /app/characters.json
-    #   /path/on/server/last_run.json   → /app/last_run.json
+    #   /path/on/server/config.json  → /app/config.json  (read-only)
+    #   /path/on/server/autosim.db   → /app/autosim.db
+    #   /path/on/server/results.json → /app/results.json
 
     networks:
       - coolify           # shared Traefik network managed by Coolify
