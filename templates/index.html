@@ -210,40 +210,15 @@ input[type=checkbox]:indeterminate { accent-color: var(--accent); opacity: 0.6; 
     <input id="raidsid-input" type="text" placeholder="Paste new raidsid here…">
   </div>
   <div class="field">
-    <label>WoW addon folder path <span style="color:var(--sub);font-weight:400;text-transform:none">(optional)</span><button class="help-btn" onclick="openWowPathHelp()" title="Where to find this path">?</button></label>
-    <input id="wow-path-input" type="text" placeholder="C:\World of Warcraft\_retail_\Interface\AddOns\Simdragosa">
+    <label>WoW addon folder <span style="color:var(--sub);font-weight:400;text-transform:none;font-size:11px">writes SimdragosaData.lua after each sim</span></label>
+    <div id="wow-folder-row" style="display:flex;align-items:center;gap:8px;margin-top:6px">
+      <span id="wow-folder-name" style="flex:1;font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--sub)">Not connected</span>
+      <button class="btn-secondary" id="wow-connect-btn" style="padding:5px 10px;font-size:12px;flex-shrink:0">Connect folder</button>
+    </div>
+    <p id="wow-fs-unsupported" style="display:none;font-size:12px;color:var(--sub);margin-top:6px">Direct folder access requires Chrome or Edge. Use the download button below.</p>
   </div>
   <button class="btn-primary" onclick="saveSettings()" style="width:100%;margin-bottom:8px">Save</button>
-  <button class="btn-secondary" onclick="downloadTooltipLua()" style="width:100%">⬇ Download SimdragosaData.lua</button>
-</div>
-
-<!-- WoW path help modal -->
-<div id="help-modal-backdrop" onclick="if(event.target===this)closeWowPathHelp()">
-  <div id="help-modal">
-    <button class="close-btn" onclick="closeWowPathHelp()">✕</button>
-    <h3>WoW addon folder path</h3>
-
-    <p>Paste the path to the <strong>Simdragosa addon folder</strong>. Simdragosa will write <code>SimdragosaData.lua</code> there automatically after every sim run. WoW reloads this file on every <code>/reload</code> — no more logging out to pick up new data.</p>
-
-    <h4>Path structure</h4>
-    <div class="path-block"><span class="dim">World of Warcraft\</span>_retail_<span class="dim">\Interface\AddOns\</span><span class="hi">Simdragosa</span></div>
-
-    <h4>Windows (default install)</h4>
-    <div class="path-block"><span class="dim">C:\Program Files (x86)\World of Warcraft\_retail_\Interface\AddOns\</span><span class="hi">Simdragosa</span></div>
-
-    <div class="note">💡 No account name needed — the addon folder is the same for all accounts on the same PC.</div>
-
-    <h4>macOS</h4>
-    <div class="path-block"><span class="dim">/Applications/World of Warcraft/_retail_/Interface/AddOns/</span><span class="hi">Simdragosa</span></div>
-
-    <h4>Linux / Lutris</h4>
-    <div class="path-block"><span class="dim">~/Games/world-of-warcraft/drive_c/Program Files (x86)/World of Warcraft/_retail_/Interface/AddOns/</span><span class="hi">Simdragosa</span></div>
-    <p style="color:var(--sub);font-size:12px">Path varies by Lutris runner configuration. Check your Lutris game settings → Configure → System Options → Game folder.</p>
-
-    <div style="margin-top:18px">
-      <button class="btn-primary" onclick="closeWowPathHelp()" style="width:100%">Got it</button>
-    </div>
-  </div>
+  <button class="btn-secondary" onclick="downloadTooltipLua()" id="wow-download-btn" style="width:100%">⬇ Download SimdragosaData.lua</button>
 </div>
 
 <div class="main">
@@ -369,6 +344,7 @@ function groupByName(arr) {
 document.addEventListener('DOMContentLoaded', async () => {
   await loadChars();
   await refreshSettings();
+  await initWowFolderStatus();
   const s = await (await fetch('/api/status')).json();
   window._lastStatus = s;
   renderActiveJobs(s.active_jobs || []);
@@ -755,9 +731,6 @@ async function refreshSettings() {
   const r = await fetch('/api/settings');
   const d = await r.json();
   document.getElementById('raidsid-status').textContent = d.has_raidsid ? `raidsid: ${d.raidsid_masked}` : 'no raidsid';
-  if (d.wow_savedvars_path) {
-    document.getElementById('wow-path-input').placeholder = d.wow_savedvars_path;
-  }
 }
 
 function toggleSettings() {
@@ -765,32 +738,139 @@ function toggleSettings() {
 }
 
 async function saveSettings() {
-  const raidsid  = document.getElementById('raidsid-input').value.trim();
-  const wowPath  = document.getElementById('wow-path-input').value.trim();
-  if (!raidsid && !wowPath) return;
-  const payload  = {};
-  if (raidsid) payload.raidsid = raidsid;
-  if (wowPath) payload.wow_savedvars_path = wowPath;
-  await fetch('/api/settings', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(payload) });
-  document.getElementById('raidsid-input').value  = '';
-  document.getElementById('wow-path-input').value = '';
+  const raidsid = document.getElementById('raidsid-input').value.trim();
+  if (!raidsid) return;
+  await fetch('/api/settings', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ raidsid }) });
+  document.getElementById('raidsid-input').value = '';
   document.getElementById('settings-panel').classList.remove('open');
   await refreshSettings();
   showToast('Settings saved');
 }
 
-async function downloadTooltipLua() {
-  const a = document.createElement('a');
-  a.href = '/api/tooltip-export';
-  a.download = 'SimdragosaData.lua';
-  a.click();
+// ── File System Access API — WoW folder auto-write ────────────────────────────
+const _FS_SUPPORTED = 'showDirectoryPicker' in window;
+
+function _idbOpen() {
+  return new Promise((res, rej) => {
+    const r = indexedDB.open('simdragosa_fs', 1);
+    r.onupgradeneeded = e => e.target.result.createObjectStore('handles');
+    r.onsuccess = e => res(e.target.result);
+    r.onerror   = e => rej(e.target.error);
+  });
+}
+async function _idbPut(key, val) {
+  const db = await _idbOpen();
+  return new Promise((res, rej) => {
+    const tx = db.transaction('handles', 'readwrite');
+    tx.objectStore('handles').put(val, key);
+    tx.oncomplete = res; tx.onerror = e => rej(e.target.error);
+  });
+}
+async function _idbGet(key) {
+  const db = await _idbOpen();
+  return new Promise((res, rej) => {
+    const tx = db.transaction('handles', 'readonly');
+    const r  = tx.objectStore('handles').get(key);
+    r.onsuccess = e => res(e.target.result ?? null);
+    r.onerror   = e => rej(e.target.error);
+  });
+}
+async function _idbDel(key) {
+  const db = await _idbOpen();
+  return new Promise((res, rej) => {
+    const tx = db.transaction('handles', 'readwrite');
+    tx.objectStore('handles').delete(key);
+    tx.oncomplete = res; tx.onerror = e => rej(e.target.error);
+  });
 }
 
-function openWowPathHelp() {
-  document.getElementById('help-modal-backdrop').classList.add('open');
+async function _updateWowFolderUI(handle) {
+  const nameEl    = document.getElementById('wow-folder-name');
+  const btnEl     = document.getElementById('wow-connect-btn');
+  const dlBtn     = document.getElementById('wow-download-btn');
+  if (!_FS_SUPPORTED) {
+    document.getElementById('wow-fs-unsupported').style.display = '';
+    document.getElementById('wow-folder-row').style.display = 'none';
+    return;
+  }
+  if (!handle) {
+    nameEl.textContent = 'Not connected'; nameEl.style.color = 'var(--sub)';
+    btnEl.textContent  = 'Connect folder'; btnEl.onclick = connectWowFolder;
+    dlBtn.textContent  = '⬇ Download SimdragosaData.lua';
+    return;
+  }
+  const perm = await handle.queryPermission({ mode: 'readwrite' }).catch(() => 'denied');
+  if (perm === 'granted') {
+    nameEl.textContent = '✓ ' + handle.name; nameEl.style.color = 'var(--green)';
+    btnEl.textContent  = 'Change'; btnEl.onclick = connectWowFolder;
+    dlBtn.textContent  = '⬇ Write to WoW folder';
+  } else {
+    nameEl.textContent = '⚠ ' + handle.name; nameEl.style.color = 'var(--yellow)';
+    btnEl.textContent  = 'Reconnect'; btnEl.onclick = reconnectWowFolder;
+    dlBtn.textContent  = '⬇ Download SimdragosaData.lua';
+  }
 }
-function closeWowPathHelp() {
-  document.getElementById('help-modal-backdrop').classList.remove('open');
+
+async function initWowFolderStatus() {
+  const handle = await _idbGet('wow_addon_dir').catch(() => null);
+  await _updateWowFolderUI(handle);
+}
+
+async function connectWowFolder() {
+  if (!_FS_SUPPORTED) return;
+  try {
+    const handle = await window.showDirectoryPicker({ mode: 'readwrite', id: 'wow-addon' });
+    await _idbPut('wow_addon_dir', handle);
+    await _updateWowFolderUI(handle);
+    showToast('WoW folder connected — will write automatically after each sim');
+  } catch (e) {
+    if (e.name !== 'AbortError') showToast('Could not connect folder', true);
+  }
+}
+
+async function reconnectWowFolder() {
+  if (!_FS_SUPPORTED) return;
+  const handle = await _idbGet('wow_addon_dir').catch(() => null);
+  if (!handle) { connectWowFolder(); return; }
+  try {
+    await handle.requestPermission({ mode: 'readwrite' });
+    await _updateWowFolderUI(handle);
+    showToast('WoW folder access restored');
+  } catch (e) {
+    showToast('Could not restore folder access', true);
+  }
+}
+
+// Write SimdragosaData.lua directly to the WoW folder if connected and permitted.
+// Returns 'written', 'no-permission', or 'not-connected'.
+async function _deliverLua() {
+  if (_FS_SUPPORTED) {
+    const handle = await _idbGet('wow_addon_dir').catch(() => null);
+    if (handle) {
+      const perm = await handle.queryPermission({ mode: 'readwrite' }).catch(() => 'denied');
+      if (perm === 'granted') {
+        try {
+          const content = await (await fetch('/api/tooltip-export')).text();
+          const fh = await handle.getFileHandle('SimdragosaData.lua', { create: true });
+          const w  = await fh.createWritable();
+          await w.write(content); await w.close();
+          return 'written';
+        } catch (e) { console.error('WoW folder write failed:', e); }
+      } else {
+        return 'no-permission';
+      }
+    }
+  }
+  // Fallback: trigger browser download
+  const a = document.createElement('a');
+  a.href = '/api/tooltip-export'; a.download = 'SimdragosaData.lua'; a.click();
+  return 'downloaded';
+}
+
+async function downloadTooltipLua() {
+  const result = await _deliverLua();
+  if (result === 'written')       showToast('SimdragosaData.lua written to WoW folder ✓');
+  if (result === 'no-permission') showToast('WoW folder needs reconnect — use Settings', true, 4000);
 }
 
 // ── Run ───────────────────────────────────────────────────────────────────────
@@ -857,8 +937,13 @@ async function pollStatus() {
     pollTimer = null;
     if (_simsWereRunning) {
       _simsWereRunning = false;
-      downloadTooltipLua();
-      showToast('Sims done — SimdragosaData.lua downloaded', false, 4000);
+      const result = await _deliverLua();
+      showToast(
+        result === 'written'       ? 'Sims done — SimdragosaData.lua written to WoW folder ✓' :
+        result === 'no-permission' ? 'Sims done — reconnect WoW folder in Settings' :
+                                     'Sims done — SimdragosaData.lua downloaded',
+        result === 'no-permission', 4000
+      );
     }
   }
 }
