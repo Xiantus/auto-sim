@@ -1,0 +1,201 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 180 120" fill="none">
+  <defs>
+    <!-- Dragon body gradient -->
+    <radialGradient id="bodyG" cx="42%" cy="35%" r="65%">
+      <stop offset="0%"   stop-color="#d4f3ff"/>
+      <stop offset="55%"  stop-color="#56b8e0"/>
+      <stop offset="100%" stop-color="#1e6fa8"/>
+    </radialGradient>
+    <!-- Wing gradient -->
+    <linearGradient id="wingG" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%"   stop-color="#90d8f8" stop-opacity="0.85"/>
+      <stop offset="100%" stop-color="#2a8ac0" stop-opacity="0.40"/>
+    </linearGradient>
+    <!-- Snout slightly lighter -->
+    <radialGradient id="snoutG" cx="50%" cy="40%" r="60%">
+      <stop offset="0%"   stop-color="#b0e8ff"/>
+      <stop offset="100%" stop-color="#4aaed4"/>
+    </radialGradient>
+    <!-- Monitor screen -->
+    <radialGradient id="screenG" cx="50%" cy="40%" r="60%">
+      <stop offset="0%"   stop-color="#1e3a6a"/>
+      <stop offset="100%" stop-color="#080f1e"/>
+    </radialGradient>
+    <!-- Subtle glow -->
+    <filter id="glow" x="-25%" y="-25%" width="150%" height="150%">
+      <feGaussianBlur stdDeviation="2.5" result="b"/>
+      <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <filter id="softGlow" x="-15%" y="-15%" width="130%" height="130%">
+      <feGaussianBlur stdDeviation="1.2" result="b"/>
+      <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+  </defs>
+
+  <!-- ===== WINGS (drawn first, behind everything) ===== -->
+  <!-- Left wing -->
+  <path d="M 52 64 Q 12 36 22 8 Q 34 38 54 56 Z"
+        fill="url(#wingG)"/>
+  <!-- Left wing membrane veins -->
+  <path d="M 52 64 Q 22 38 22 8" stroke="#70c8f0" stroke-width="0.7" opacity="0.5"/>
+  <path d="M 52 64 Q 32 42 30 14" stroke="#70c8f0" stroke-width="0.5" opacity="0.4"/>
+  <!-- Right wing (partially behind monitor) -->
+  <path d="M 72 60 Q 100 22 92 4 Q 84 32 73 54 Z"
+        fill="url(#wingG)" opacity="0.7"/>
+  <path d="M 72 60 Q 100 22 92 4" stroke="#70c8f0" stroke-width="0.7" opacity="0.4"/>
+
+  <!-- ===== MONITOR ===== -->
+  <!-- Monitor housing -->
+  <rect x="108" y="18" width="62" height="47" rx="4"
+        fill="#16162a" stroke="#2e3a5e" stroke-width="1.5"/>
+  <!-- Screen area -->
+  <rect x="111" y="21" width="56" height="41" rx="2"
+        fill="url(#screenG)"/>
+  <!-- Screen content: sim result rows -->
+  <text x="114" y="30" font-size="4.5" font-family="monospace"
+        fill="#7c6af7" opacity="0.95">Droptimizer</text>
+  <!-- Result bars -->
+  <rect x="114" y="33" width="36" height="2.5" rx="1.2" fill="#4ade80" opacity="0.85"/>
+  <rect x="114" y="38" width="26" height="2.5" rx="1.2" fill="#60a5fa" opacity="0.75"/>
+  <rect x="114" y="43" width="40" height="2.5" rx="1.2" fill="#4ade80" opacity="0.70"/>
+  <rect x="114" y="48" width="20" height="2.5" rx="1.2" fill="#fbbf24" opacity="0.70"/>
+  <rect x="114" y="53" width="32" height="2.5" rx="1.2" fill="#4ade80" opacity="0.60"/>
+  <!-- Screen subtle top-glare -->
+  <rect x="112" y="22" width="54" height="6" rx="1"
+        fill="white" opacity="0.03"/>
+  <!-- Monitor stand -->
+  <rect x="136" y="65" width="8"  height="8"  rx="1" fill="#16162a"/>
+  <rect x="126" y="73" width="28" height="4"  rx="2" fill="#16162a" stroke="#2e3a5e" stroke-width="0.8"/>
+
+  <!-- ===== DESK ===== -->
+  <rect x="8"  y="79" width="168" height="10" rx="3"
+        fill="#1c1c2e" stroke="#2e2e48" stroke-width="1"/>
+  <!-- Desk top highlight strip -->
+  <rect x="8"  y="79" width="168" height="2"  rx="1" fill="#282840" opacity="0.8"/>
+
+  <!-- ===== KEYBOARD ===== -->
+  <rect x="48" y="73" width="58" height="8" rx="2.5"
+        fill="#252538" stroke="#2e2e48" stroke-width="0.8"/>
+  <!-- Key row 1 -->
+  <rect x="51" y="75" width="52" height="2" rx="1" fill="#1a1a2e" opacity="0.9"/>
+  <!-- Key row 2 -->
+  <rect x="51" y="78.5" width="52" height="2" rx="1" fill="#1a1a2e" opacity="0.9"/>
+
+  <!-- ===== DRAGON BODY (partially behind desk) ===== -->
+  <ellipse cx="60" cy="93" rx="26" ry="14" fill="url(#bodyG)"/>
+
+  <!-- ===== TAIL ===== -->
+  <path d="M 35 88 Q 10 96 12 112 Q 20 104 33 93 Z" fill="url(#bodyG)"/>
+  <!-- Tail spikes -->
+  <path d="M 11 110 L 7  121 L 16 113 Z" fill="#88d0f8"/>
+  <path d="M 15 113 L 12 124 L 20 116 Z" fill="#a0deff"/>
+
+  <!-- ===== PAWS ON DESK ===== -->
+  <!-- Left paw pad -->
+  <ellipse cx="44" cy="79" rx="11" ry="5.5" fill="url(#bodyG)"/>
+  <!-- Left claws -->
+  <path d="M 36 77 Q 33 71 31 68" stroke="#90d8f8" stroke-width="2.2" stroke-linecap="round"/>
+  <path d="M 40 75 Q 38 69 37 66" stroke="#90d8f8" stroke-width="2.2" stroke-linecap="round"/>
+  <path d="M 45 74 Q 44 68 44 65" stroke="#90d8f8" stroke-width="2.2" stroke-linecap="round"/>
+  <!-- Right paw pad -->
+  <ellipse cx="76" cy="79" rx="11" ry="5.5" fill="url(#bodyG)"/>
+  <!-- Right claws -->
+  <path d="M 70 77 Q 68 71 66 68" stroke="#90d8f8" stroke-width="2.2" stroke-linecap="round"/>
+  <path d="M 75 75 Q 74 69 73 66" stroke="#90d8f8" stroke-width="2.2" stroke-linecap="round"/>
+  <path d="M 80 74 Q 80 68 80 65" stroke="#90d8f8" stroke-width="2.2" stroke-linecap="round"/>
+
+  <!-- ===== NECK ===== -->
+  <ellipse cx="60" cy="70" rx="14" ry="15" fill="url(#bodyG)"/>
+  <!-- Neck scales ridge -->
+  <path d="M 54 58 Q 60 53 66 58" stroke="#a8e6ff" stroke-width="0.9" opacity="0.5"/>
+
+  <!-- ===== HEAD ===== -->
+  <ellipse cx="60" cy="50" rx="23" ry="21" fill="url(#bodyG)"/>
+  <!-- Head scale details -->
+  <path d="M 46 40 Q 53 33 60 31 Q 67 33 74 40"
+        stroke="#a0e0ff" stroke-width="0.9" fill="none" opacity="0.55"/>
+  <path d="M 50 35 Q 55 29 60 27 Q 65 29 70 35"
+        stroke="#a0e0ff" stroke-width="0.8" fill="none" opacity="0.35"/>
+
+  <!-- ===== HORNS ===== -->
+  <!-- Left horn -->
+  <path d="M 46 34 L 37 10 L 53 28 Z" fill="#80ccf4"/>
+  <path d="M 46 34 L 38 12 L 51 30 Z" fill="#b8eaff" opacity="0.45"/>
+  <!-- Right horn -->
+  <path d="M 74 34 L 83 10 L 67 28 Z" fill="#80ccf4"/>
+  <path d="M 74 34 L 82 12 L 69 30 Z" fill="#b8eaff" opacity="0.45"/>
+  <!-- Horn tip frost glow -->
+  <circle cx="37" cy="10" r="2.5" fill="#d8f6ff" filter="url(#softGlow)"/>
+  <circle cx="83" cy="10" r="2.5" fill="#d8f6ff" filter="url(#softGlow)"/>
+
+  <!-- ===== EAR FRILLS ===== -->
+  <path d="M 38 47 Q 22 34 28 52 Q 32 50 38 51 Z" fill="#6abee8"/>
+  <path d="M 82 47 Q 98 34 92 52 Q 88 50 82 51 Z" fill="#6abee8"/>
+
+  <!-- ===== EYES (glowing, looking at the monitor) ===== -->
+  <!-- Left eye — white sclera -->
+  <ellipse cx="48" cy="47" rx="7.5" ry="7.5" fill="white" filter="url(#softGlow)"/>
+  <!-- Left iris (ice blue) -->
+  <ellipse cx="49" cy="48" rx="5.5" ry="5.5" fill="#1560a0"/>
+  <!-- Left pupil (vertical slit) -->
+  <ellipse cx="49" cy="48" rx="2"   ry="4.5" fill="#06111e"/>
+  <!-- Left shine -->
+  <ellipse cx="46.5" cy="44.5" rx="1.8" ry="1.8" fill="white" opacity="0.9"/>
+  <!-- Screen glow reflection in eye -->
+  <rect x="50.5" y="46" width="2" height="3" rx="0.5" fill="#60a5fa" opacity="0.35"/>
+
+  <!-- Right eye -->
+  <ellipse cx="72" cy="47" rx="7.5" ry="7.5" fill="white" filter="url(#softGlow)"/>
+  <ellipse cx="73" cy="48" rx="5.5" ry="5.5" fill="#1560a0"/>
+  <ellipse cx="73" cy="48" rx="2"   ry="4.5" fill="#06111e"/>
+  <ellipse cx="70.5" cy="44.5" rx="1.8" ry="1.8" fill="white" opacity="0.9"/>
+  <rect x="74.5" y="46" width="2" height="3" rx="0.5" fill="#60a5fa" opacity="0.35"/>
+
+  <!-- ===== SNOUT / MUZZLE ===== -->
+  <ellipse cx="60" cy="60" rx="13" ry="9.5" fill="url(#snoutG)"/>
+  <!-- Nostrils -->
+  <ellipse cx="54.5" cy="59" rx="2.2" ry="1.5" fill="#44a0c4" opacity="0.65"/>
+  <ellipse cx="65.5" cy="59" rx="2.2" ry="1.5" fill="#44a0c4" opacity="0.65"/>
+  <!-- Smile -->
+  <path d="M 52 64 Q 60 70 68 64"
+        stroke="#3a92b0" stroke-width="1.8" stroke-linecap="round"/>
+  <!-- Tiny fangs -->
+  <path d="M 55 64 L 53 69 L 57 65 Z" fill="white" opacity="0.85"/>
+  <path d="M 65 64 L 67 69 L 63 65 Z" fill="white" opacity="0.85"/>
+
+  <!-- ===== FROST BREATH (wisps from nostrils) ===== -->
+  <path d="M 54 57 Q 50 51 52 44" stroke="#c0f0ff" stroke-width="2"
+        stroke-linecap="round" opacity="0.30" fill="none"/>
+  <path d="M 66 57 Q 70 51 68 44" stroke="#c0f0ff" stroke-width="2"
+        stroke-linecap="round" opacity="0.30" fill="none"/>
+
+  <!-- ===== FLOATING ICE CRYSTALS ===== -->
+  <!-- Top-left snowflake -->
+  <g filter="url(#softGlow)" opacity="0.75">
+    <line x1="16" y1="22" x2="16" y2="10" stroke="#b0e8ff" stroke-width="1.8" stroke-linecap="round"/>
+    <line x1="10" y1="16" x2="22" y2="16" stroke="#b0e8ff" stroke-width="1.8" stroke-linecap="round"/>
+    <line x1="11.5" y1="11.5" x2="20.5" y2="20.5" stroke="#b0e8ff" stroke-width="1.1" stroke-linecap="round"/>
+    <line x1="20.5" y1="11.5" x2="11.5" y2="20.5" stroke="#b0e8ff" stroke-width="1.1" stroke-linecap="round"/>
+    <circle cx="16" cy="10" r="1.2" fill="#d8f8ff"/>
+    <circle cx="16" cy="22" r="1.2" fill="#d8f8ff"/>
+    <circle cx="10" cy="16" r="1.2" fill="#d8f8ff"/>
+    <circle cx="22" cy="16" r="1.2" fill="#d8f8ff"/>
+  </g>
+  <!-- Small crystal near right horn -->
+  <g filter="url(#softGlow)" opacity="0.55">
+    <line x1="98" y1="15" x2="98" y2="7"  stroke="#b0e8ff" stroke-width="1.3" stroke-linecap="round"/>
+    <line x1="94" y1="11" x2="102" y2="11" stroke="#b0e8ff" stroke-width="1.3" stroke-linecap="round"/>
+    <line x1="95.2" y1="8.2" x2="100.8" y2="13.8" stroke="#b0e8ff" stroke-width="0.9" stroke-linecap="round"/>
+    <line x1="100.8" y1="8.2" x2="95.2" y2="13.8" stroke="#b0e8ff" stroke-width="0.9" stroke-linecap="round"/>
+  </g>
+  <!-- Tiny crystal bottom-right -->
+  <g opacity="0.40">
+    <line x1="170" y1="75" x2="170" y2="69" stroke="#b0e8ff" stroke-width="1" stroke-linecap="round"/>
+    <line x1="167" y1="72" x2="173" y2="72" stroke="#b0e8ff" stroke-width="1" stroke-linecap="round"/>
+    <line x1="167.8" y1="69.8" x2="172.2" y2="74.2" stroke="#b0e8ff" stroke-width="0.7" stroke-linecap="round"/>
+    <line x1="172.2" y1="69.8" x2="167.8" y2="74.2" stroke="#b0e8ff" stroke-width="0.7" stroke-linecap="round"/>
+  </g>
+
+  <!-- ===== AMBIENT FROST GLOW beneath dragon ===== -->
+  <ellipse cx="60" cy="88" rx="38" ry="6" fill="#50b8e8" opacity="0.07"/>
+</svg>
