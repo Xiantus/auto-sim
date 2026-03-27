@@ -224,7 +224,18 @@ def load_tooltip_data_for_user(user_id: int) -> dict:
             "name": r["item_name"] or "",
             "updated": r["sim_date"],
         })
-        # Map difficulty string to short key used in Lua
-        diff_key = "heroic" if "heroic" in r["difficulty"] else "mythic"
+        # Derive Lua label from ilvl (ground truth) with difficulty fallback.
+        # Tracks: Myth ≥289, Hero ≥276, Champion ≥263.
+        ilvl = r["ilvl"]
+        if ilvl is not None:
+            if   ilvl >= 289: diff_key = "mythic"
+            elif ilvl >= 276: diff_key = "heroic"
+            else:             diff_key = "champion"
+        elif "heroic" in r["difficulty"]:
+            diff_key = "heroic"
+        elif "mythic" in r["difficulty"]:
+            diff_key = "mythic"
+        else:
+            diff_key = "champion"
         result[key][item_id][diff_key] = r["dps_gain"]
     return result
