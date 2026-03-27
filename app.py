@@ -539,6 +539,54 @@ def api_tooltip_export():
     )
 
 
+@app.get("/api/tooltip-debug")
+@require_login
+def api_tooltip_debug():
+    """Fetch the data.json for the most recent completed sim and return its
+    raw structure so we can verify field names and fix the parser."""
+    # Find the most recent DONE job with a Raidbots URL
+    snap    = state.snapshot()
+    results = snap.get("results", {})
+    url     = None
+    for entry in results.values():
+        job = entry.get("last_success") or entry.get("latest") or {}
+        if job.get("url") and "raidbots.com" in job.get("url", ""):
+            url = job["url"]
+            break
+
+    if not url:
+        return jsonify({"error": "No completed Raidbots sim found. Run a sim first."}), 404
+
+    sim_id    = url.rstrip("/").split("/")[-1]
+    data_url  = f"{RAIDBOTS_BASE}/simbot/report/{sim_id}/data.json"
+
+    try:
+        rb_session = make_raidbots_session(load_raidsid())
+        resp       = rb_session.get(data_url, timeout=30)
+        if not resp.ok:
+            return jsonify({"error": f"Raidbots returned HTTP {resp.status_code}", "url": data_url}), 502
+        raw = resp.json()
+    except Exception as exc:
+        return jsonify({"error": str(exc), "url": data_url}), 500
+
+    # Extract the pieces the parser cares about, without sending the whole 1MB blob
+    players    = raw.get("sim", {}).get("players", [])
+    player_0   = players[0] if players else {}
+    droptimizer = player_0.get("droptimizer", {})
+    upgrades   = droptimizer.get("upgrades", [])
+
+    return jsonify({
+        "report_url":        url,
+        "data_url":          data_url,
+        "player_name":       player_0.get("name"),
+        "player_keys":       list(player_0.keys()),
+        "droptimizer_keys":  list(droptimizer.keys()),
+        "upgrade_count":     len(upgrades),
+        # First 3 raw upgrade objects so we can see every field name
+        "upgrades_sample":   upgrades[:3],
+    })
+
+
 @app.post("/api/run")
 @require_login
 def api_run():
