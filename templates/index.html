@@ -342,6 +342,7 @@ input[type=checkbox]:indeterminate { accent-color: var(--accent); opacity: 0.6; 
 let chars = [];
 let editingId = null;
 let pollTimer = null;
+let _simsWereRunning = false;  // detect running→done transition for auto-download
 
 const charListOpen = new Set();  // Characters panel
 const selectorOpen = new Set();  // Run selector
@@ -838,6 +839,7 @@ async function startRun() {
 }
 
 function startPolling() {
+  _simsWereRunning = true;
   if (pollTimer) clearInterval(pollTimer);
   pollTimer = setInterval(pollStatus, 1500);
 }
@@ -853,6 +855,11 @@ async function pollStatus() {
   if (!d.running) {
     clearInterval(pollTimer);
     pollTimer = null;
+    if (_simsWereRunning) {
+      _simsWereRunning = false;
+      downloadTooltipLua();
+      showToast('Sims done — SimdragosaData.lua downloaded', false, 4000);
+    }
   }
 }
 
@@ -1017,14 +1024,14 @@ function copyUrl(url) {
 }
 
 let toastTimer = null;
-function showToast(msg, err = false) {
+function showToast(msg, err = false, duration = 2500) {
   const t = document.getElementById('toast');
   t.textContent = msg;
   t.style.borderColor = err ? 'var(--red)' : 'var(--green)';
   t.style.color       = err ? 'var(--red)' : 'var(--green)';
   t.classList.add('show');
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => t.classList.remove('show'), 2500);
+  toastTimer = setTimeout(() => t.classList.remove('show'), duration);
 }
 </script>
 </body>
