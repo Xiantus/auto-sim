@@ -11,6 +11,10 @@ droptimizer.log
 
 # Persisted run state
 last_run.json
+results.json
+
+# Database (users, characters, tooltip data — never commit)
+*.db
 
 # Python
 __pycache__/
