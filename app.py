@@ -209,6 +209,8 @@ def _build_lua(user_id: int) -> str:
         lines.append(f'  ["{char_key}"] = {{')
         for item_id, info in sorted(items.items()):
             parts = []
+            if "champion" in info:
+                parts.append(f"champion={info['champion']}")
             if "heroic" in info:
                 parts.append(f"heroic={info['heroic']}")
             if "mythic" in info:
