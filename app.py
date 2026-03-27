@@ -129,33 +129,66 @@ def save_wow_savedvars_path(path: str) -> None:
 def _parse_tooltip_data(report_json: dict) -> list[dict]:
     """Extract item upgrade entries from a Raidbots Droptimizer report JSON.
 
-    Tries multiple field-name spellings across Raidbots API versions.
+    Real structure (verified against live Raidbots API):
+      sim.players[0].collected_data.dps.mean  → base DPS
+      sim.profilesets.results[]               → one entry per item/slot combo
+        .name  → "specId/sourceId/difficulty/itemId/ilvl/bonusId/slot///"
+        .mean  → simulated DPS with that item equipped
+
+    DPS gain = profileset.mean - base_dps.
+    Items appearing in multiple slots (e.g. trinket1/trinket2, finger1/finger2)
+    are de-duplicated by keeping the highest gain.
     Returns a list of {item_id, dps_gain, ilvl, item_name} dicts.
     """
     try:
         players = report_json.get("sim", {}).get("players", [])
         if not players:
             return []
-        droptimizer = players[0].get("droptimizer", {})
-        upgrades    = droptimizer.get("upgrades", [])
-        entries = []
-        for upg in upgrades:
-            item_node = upg.get("item", {})
-            item_id  = (upg.get("itemId") or upg.get("itemID")
-                        or item_node.get("id"))
-            dps_gain = (upg.get("dpsGain") or upg.get("dps")
-                        or upg.get("upgrade") or upg.get("value"))
-            ilvl     = upg.get("ilvl") or upg.get("itemLevel")
-            name     = (upg.get("name") or upg.get("itemName")
-                        or item_node.get("name", ""))
-            if item_id and dps_gain is not None and float(dps_gain) > 0:
-                entries.append({
-                    "item_id":   int(item_id),
-                    "dps_gain":  round(float(dps_gain), 1),
-                    "ilvl":      int(ilvl) if ilvl else None,
-                    "item_name": str(name) if name else None,
-                })
-        return entries
+
+        # Base player DPS
+        base_dps = players[0].get("collected_data", {}).get("dps", {}).get("mean")
+        if base_dps is None:
+            log.warning("tooltip parse: no base DPS in player collected_data")
+            return []
+
+        # Profileset results
+        results = report_json.get("sim", {}).get("profilesets", {}).get("results", [])
+        if not results:
+            log.warning("tooltip parse: no profileset results found")
+            return []
+
+        # name format: specId/sourceId/difficulty/itemId/ilvl/bonusId/slot///
+        best: dict[int, dict] = {}   # item_id → best entry so far
+        for row in results:
+            name_str = row.get("name", "")
+            mean_dps = row.get("mean")
+            if mean_dps is None:
+                continue
+
+            parts = name_str.split("/")
+            if len(parts) < 5:
+                continue
+
+            try:
+                item_id = int(parts[3])
+                ilvl    = int(parts[4]) if parts[4] else None
+            except (ValueError, TypeError):
+                continue
+
+            dps_gain = round(mean_dps - base_dps, 1)
+            if dps_gain <= 0:
+                continue
+
+            existing = best.get(item_id)
+            if existing is None or dps_gain > existing["dps_gain"]:
+                best[item_id] = {
+                    "item_id":   item_id,
+                    "dps_gain":  dps_gain,
+                    "ilvl":      ilvl,
+                    "item_name": None,
+                }
+
+        return list(best.values())
     except Exception as exc:
         log.warning("tooltip parse error: %s", exc)
         return []
@@ -570,20 +603,26 @@ def api_tooltip_debug():
         return jsonify({"error": str(exc), "url": data_url}), 500
 
     # Extract the pieces the parser cares about, without sending the whole 1MB blob
-    players    = raw.get("sim", {}).get("players", [])
-    player_0   = players[0] if players else {}
-    droptimizer = player_0.get("droptimizer", {})
-    upgrades   = droptimizer.get("upgrades", [])
+    players      = raw.get("sim", {}).get("players", [])
+    player_0     = players[0] if players else {}
+    base_dps     = player_0.get("collected_data", {}).get("dps", {}).get("mean")
+    profilesets  = raw.get("sim", {}).get("profilesets", {})
+    ps_results   = profilesets.get("results", [])
+
+    # Run the parser so we can report how many entries it found
+    parsed = _parse_tooltip_data(raw)
 
     return jsonify({
-        "report_url":        url,
-        "data_url":          data_url,
-        "player_name":       player_0.get("name"),
-        "player_keys":       list(player_0.keys()),
-        "droptimizer_keys":  list(droptimizer.keys()),
-        "upgrade_count":     len(upgrades),
-        # First 3 raw upgrade objects so we can see every field name
-        "upgrades_sample":   upgrades[:3],
+        "report_url":          url,
+        "data_url":            data_url,
+        "player_name":         player_0.get("name"),
+        "base_dps":            base_dps,
+        "profileset_count":    len(ps_results),
+        "parsed_entry_count":  len(parsed),
+        # First 3 parsed entries so we can verify output
+        "parsed_sample":       parsed[:3],
+        # First 3 raw profileset rows so field names are visible
+        "profilesets_sample":  ps_results[:3],
     })
 
 
