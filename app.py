@@ -546,9 +546,9 @@ def api_tooltip_debug():
     raw structure so we can verify field names and fix the parser."""
     # Find the most recent DONE job with a Raidbots URL
     snap    = state.snapshot()
-    results = snap.get("results", {})
+    results = snap.get("results", [])   # results is a list, not a dict
     url     = None
-    for entry in results.values():
+    for entry in results:
         job = entry.get("last_success") or entry.get("latest") or {}
         if job.get("url") and "raidbots.com" in job.get("url", ""):
             url = job["url"]
