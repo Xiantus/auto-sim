@@ -191,6 +191,16 @@ input[type=checkbox]:indeterminate { accent-color: var(--accent); opacity: 0.6; 
 /* Extra badge variants */
 .badge-skipped   { background: #2a2a3e; color: var(--sub); }
 .badge-cancelled { background: #2a2a3e; color: var(--sub); }
+.toggle-switch { position:relative; display:inline-block; width:40px; height:22px; }
+.toggle-switch input { opacity:0; width:0; height:0; }
+.toggle-slider { position:absolute; cursor:pointer; inset:0; background:var(--surf2); border-radius:22px; transition:.2s; }
+.toggle-slider:before { content:""; position:absolute; height:16px; width:16px; left:3px; bottom:3px; background:#fff; border-radius:50%; transition:.2s; }
+.toggle-switch input:checked + .toggle-slider { background:var(--acc-h); }
+.toggle-switch input:checked + .toggle-slider:before { transform:translateX(18px); }
+
+/* Onboarding step dots */
+.ob-dot { width:8px; height:8px; border-radius:50%; background:var(--surf2); border:1px solid var(--border); transition:.2s; }
+.ob-dot-active { background:var(--acc-h); border-color:var(--acc-h); }
 </style>
 </head>
 <body>
@@ -199,15 +209,24 @@ input[type=checkbox]:indeterminate { accent-color: var(--accent); opacity: 0.6; 
   <h1><img src="/static/simdragosa-logo.svg" alt="" style="height:38px;width:auto;vertical-align:middle;margin-right:6px;"> Simdragosa</h1>
   <span id="raidsid-status"></span>
   <span style="font-size:12px;color:var(--sub)">{{ session.username }}</span>
+  <button class="btn-secondary" onclick="_obStep=1;_obRender();document.getElementById('onboarding-backdrop').style.display='flex'" style="font-size:11px;padding:4px 8px">Getting started</button>
   <button id="settings-btn" onclick="toggleSettings()">⚙ Settings</button>
   <a href="/logout" style="background:none;border:1px solid var(--border);color:var(--sub);border-radius:6px;padding:5px 10px;cursor:pointer;font-size:13px;text-decoration:none;" onmouseover="this.style.borderColor='var(--accent)';this.style.color='var(--text)'" onmouseout="this.style.borderColor='var(--border)';this.style.color='var(--sub)'">Log out</a>
 </header>
 
 <div id="settings-panel">
   <h4>Settings</h4>
-  <div class="field">
-    <label>raidsid cookie</label>
-    <input id="raidsid-input" type="text" placeholder="Paste new raidsid here…">
+  <div style="margin-bottom:16px">
+    <label style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--sub);display:block;margin-bottom:6px">
+      Raidbots Session ID
+      <button class="help-btn" onclick="openRaidsidHelp()" style="margin-left:6px">?</button>
+    </label>
+    <div style="display:flex;gap:8px;align-items:center">
+      <input type="password" id="raidsid-input" placeholder="Paste your raidsid cookie value"
+        style="flex:1;background:var(--surf2);border:1px solid var(--border);border-radius:7px;padding:7px 10px;color:var(--text);font-size:13px;outline:none">
+      <button class="btn-secondary" onclick="saveRaidsid()" style="white-space:nowrap">Save</button>
+    </div>
+    <p style="font-size:11px;color:var(--sub);margin-top:5px">Required to submit sims. Stored only on this server, never shared.</p>
   </div>
   <div class="field">
     <label>WoW data folder <span style="color:var(--sub);font-weight:400;text-transform:none;font-size:11px">writes SimdragosaData.lua after each sim</span> <button class="help-btn" onclick="openFolderHelp()" title="Setup instructions">?</button></label>
@@ -216,6 +235,16 @@ input[type=checkbox]:indeterminate { accent-color: var(--accent); opacity: 0.6; 
       <button class="btn-secondary" id="wow-connect-btn" style="padding:5px 10px;font-size:12px;flex-shrink:0">Connect folder</button>
     </div>
     <p id="wow-fs-unsupported" style="display:none;font-size:12px;color:var(--sub);margin-top:6px">Direct folder access requires Chrome or Edge. Use the download button below.</p>
+  </div>
+  <div class="settings-row" style="display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border)">
+    <div>
+      <div style="font-size:13px;font-weight:600;color:var(--text)">Auto-deliver Lua after sims</div>
+      <div style="font-size:11px;color:var(--sub);margin-top:2px">Write SimdragosaData.lua automatically when sims complete</div>
+    </div>
+    <label class="toggle-switch" style="flex-shrink:0;margin-left:12px">
+      <input type="checkbox" id="auto-deliver-toggle" onchange="saveAutoDeliverPref()">
+      <span class="toggle-slider"></span>
+    </label>
   </div>
 
 <!-- Folder setup help modal -->
@@ -232,6 +261,21 @@ input[type=checkbox]:indeterminate { accent-color: var(--accent); opacity: 0.6; 
     <p style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--sub);margin-bottom:6px">Step 3 — connect the folder here</p>
     <p style="font-size:13px;color:var(--text);line-height:1.6;margin-bottom:16px">Click <strong>Connect folder</strong> and select the <code>Simdragosa</code> folder inside your Documents. Done — SimdragosaData.lua will be written there automatically after every sim and WoW loads it via the junction.</p>
     <button class="btn-primary" onclick="closeFolderHelp()" style="width:100%">Got it</button>
+  </div>
+</div>
+<div id="raidsid-help-backdrop" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:1100;align-items:center;justify-content:center">
+  <div style="background:var(--surf);border:1px solid var(--border);border-radius:12px;padding:24px;max-width:480px;width:90%;max-height:80vh;overflow-y:auto">
+    <h3 style="margin-bottom:12px;color:var(--acc-h)">How to find your Raidbots session ID</h3>
+    <ol style="font-size:13px;color:var(--text);line-height:1.8;padding-left:18px;margin-bottom:16px">
+      <li>Open <strong>raidbots.com</strong> in Chrome or Edge (no account required).</li>
+      <li>Press <strong>F12</strong> to open DevTools.</li>
+      <li>Go to the <strong>Application</strong> tab.</li>
+      <li>In the left sidebar, expand <strong>Cookies</strong> and click <code>https://www.raidbots.com</code>.</li>
+      <li>Find the cookie named <strong><code>raidsid</code></strong> and copy its <strong>Value</strong>.</li>
+      <li>Paste it in the field above and click <strong>Save</strong>.</li>
+    </ol>
+    <p style="font-size:12px;color:var(--sub);margin-bottom:16px">The raidsid cookie acts as your session token. It does not require a paid Raidbots account, but a free account increases your sim quota.</p>
+    <button class="btn-primary" onclick="closeRaidsidHelp()" style="width:100%">Got it</button>
   </div>
 </div>
   <button class="btn-primary" onclick="saveSettings()" style="width:100%;margin-bottom:8px">Save</button>
@@ -302,17 +346,35 @@ input[type=checkbox]:indeterminate { accent-color: var(--accent); opacity: 0.6; 
         <label>Realm</label>
         <input id="f-realm" type="text" placeholder="draenor">
       </div>
-      <div class="field">
-        <label>Spec ID</label>
-        <input id="f-spec-id" type="number" placeholder="63">
-      </div>
-      <div class="field">
-        <label>Loot Spec ID</label>
-        <input id="f-loot-spec-id" type="number" placeholder="same as spec id">
-      </div>
+      <details style="margin-bottom:12px;grid-column:1/-1">
+        <summary style="cursor:pointer;font-size:12px;color:var(--sub);user-select:none">Advanced options</summary>
+        <div style="padding-top:10px;display:grid;grid-template-columns:1fr 1fr;gap:12px">
+          <div class="field">
+            <label>Spec ID</label>
+            <input id="f-spec-id" type="number" placeholder="63">
+          </div>
+          <div class="field">
+            <label>Loot Spec ID</label>
+            <input id="f-loot-spec-id" type="number" placeholder="same as spec id">
+          </div>
+        </div>
+      </details>
       <div class="field">
         <label>Crafted Stats</label>
-        <input id="f-crafted-stats" type="text" placeholder="36/49">
+        <select id="f-crafted-stats">
+          <option value="36/49">Haste / Versatility</option>
+          <option value="36/32">Haste / Critical Strike</option>
+          <option value="36/40">Haste / Mastery</option>
+          <option value="32/36">Critical Strike / Haste</option>
+          <option value="32/40">Critical Strike / Mastery</option>
+          <option value="32/49">Critical Strike / Versatility</option>
+          <option value="40/36">Mastery / Haste</option>
+          <option value="40/32">Mastery / Critical Strike</option>
+          <option value="40/49">Mastery / Versatility</option>
+          <option value="49/36">Versatility / Haste</option>
+          <option value="49/32">Versatility / Critical Strike</option>
+          <option value="49/40">Versatility / Mastery</option>
+        </select>
       </div>
     </div>
     <div style="margin-top:14px">
@@ -329,6 +391,74 @@ input[type=checkbox]:indeterminate { accent-color: var(--accent); opacity: 0.6; 
 </div>
 
 <div id="toast"></div>
+
+<!-- Onboarding modal -->
+<div id="onboarding-backdrop" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:1200;align-items:center;justify-content:center">
+  <div style="background:var(--surf);border:1px solid var(--border);border-radius:14px;padding:28px;max-width:520px;width:92%;max-height:85vh;overflow-y:auto">
+
+    <!-- Step indicators -->
+    <div style="display:flex;gap:6px;justify-content:center;margin-bottom:20px" id="ob-steps">
+      <div class="ob-dot ob-dot-active"></div>
+      <div class="ob-dot"></div>
+      <div class="ob-dot"></div>
+    </div>
+
+    <!-- Step 1 -->
+    <div id="ob-step-1">
+      <h3 style="color:var(--acc-h);margin-bottom:10px">Welcome to Simdragosa 👋</h3>
+      <p style="font-size:13px;color:var(--text);line-height:1.7;margin-bottom:12px">
+        To submit sims you need a <strong>Raidbots session ID</strong>. This is a cookie from raidbots.com that lets the app submit sims on your behalf — no paid account needed.
+      </p>
+      <ol style="font-size:13px;color:var(--text);line-height:1.9;padding-left:18px;margin-bottom:16px">
+        <li>Open <a href="https://www.raidbots.com" target="_blank" style="color:var(--acc-h)">raidbots.com</a> in this browser.</li>
+        <li>Press <strong>F12</strong> → <strong>Application</strong> tab → <strong>Cookies</strong> → raidbots.com</li>
+        <li>Copy the value of the <code>raidsid</code> cookie.</li>
+        <li>Paste it in <strong>Settings → Raidbots Session ID</strong>.</li>
+      </ol>
+      <p style="font-size:12px;color:var(--sub);margin-bottom:20px">You can do this after closing this guide — the setting is always accessible in the top-right Settings panel.</p>
+      <div style="display:flex;justify-content:flex-end">
+        <button class="btn-primary" onclick="obNext()">Next →</button>
+      </div>
+    </div>
+
+    <!-- Step 2 -->
+    <div id="ob-step-2" style="display:none">
+      <h3 style="color:var(--acc-h);margin-bottom:10px">Add your character</h3>
+      <p style="font-size:13px;color:var(--text);line-height:1.7;margin-bottom:12px">
+        Click <strong>+ Add Character</strong> in the sidebar and paste your SimC string. The app will auto-fill your name, spec, realm, and region.
+      </p>
+      <p style="font-size:13px;color:var(--text);line-height:1.7;margin-bottom:8px"><strong>How to get your SimC string:</strong></p>
+      <ul style="font-size:13px;color:var(--text);line-height:1.9;padding-left:18px;margin-bottom:16px">
+        <li>Install the <strong>SimulationCraft</strong> in-game addon and use <code>/simc</code>, <em>or</em></li>
+        <li>Go to raidbots.com → Top Gear → <strong>Get SimC</strong> button at the top.</li>
+      </ul>
+      <p style="font-size:12px;color:var(--sub);margin-bottom:20px">You can add multiple characters and multiple specs per character.</p>
+      <div style="display:flex;justify-content:space-between">
+        <button class="btn-secondary" onclick="obBack()">← Back</button>
+        <button class="btn-primary" onclick="obNext()">Next →</button>
+      </div>
+    </div>
+
+    <!-- Step 3 -->
+    <div id="ob-step-3" style="display:none">
+      <h3 style="color:var(--acc-h);margin-bottom:10px">Auto Lua delivery <span style="font-size:12px;color:var(--sub);font-weight:400">(optional)</span></h3>
+      <p style="font-size:13px;color:var(--text);line-height:1.7;margin-bottom:12px">
+        If you use the <strong>Simdragosa WoW addon</strong>, you can have <code>SimdragosaData.lua</code> written to your WoW folder automatically after every sim — no manual file moving.
+      </p>
+      <ol style="font-size:13px;color:var(--text);line-height:1.9;padding-left:18px;margin-bottom:12px">
+        <li>In <strong>Settings</strong>, enable <em>Auto-deliver Lua after sims</em>.</li>
+        <li>Click <strong>Connect folder</strong> and select your <code>Documents\Simdragosa</code> folder.</li>
+        <li>If this is your first time, click the <strong>?</strong> next to "WoW data folder" for the one-time junction setup instructions.</li>
+      </ol>
+      <p style="font-size:12px;color:var(--sub);margin-bottom:20px">This requires Chrome or Edge. You can skip this step and use the manual download button instead.</p>
+      <div style="display:flex;justify-content:space-between">
+        <button class="btn-secondary" onclick="obBack()">← Back</button>
+        <button class="btn-primary" onclick="obFinish()">Get started!</button>
+      </div>
+    </div>
+
+  </div>
+</div>
 
 <script>
 let chars = [];
@@ -357,16 +487,57 @@ function groupByName(arr) {
   return map;
 }
 
+// ── Auto-deliver preference ───────────────────────────────────────────────────
+function loadAutoDeliverPref() {
+  const v = localStorage.getItem('simdragosa_auto_deliver');
+  document.getElementById('auto-deliver-toggle').checked = v === 'true';
+}
+function saveAutoDeliverPref() {
+  localStorage.setItem('simdragosa_auto_deliver', document.getElementById('auto-deliver-toggle').checked);
+}
+
+// ── Onboarding ────────────────────────────────────────────────────────────────
+let _obStep = 1;
+const _OB_STEPS = 3;
+
+function obNext() {
+  if (_obStep < _OB_STEPS) { _obStep++; _obRender(); }
+}
+function obBack() {
+  if (_obStep > 1) { _obStep--; _obRender(); }
+}
+function obFinish() {
+  localStorage.setItem('simdragosa_onboarding_done', 'true');
+  document.getElementById('onboarding-backdrop').style.display = 'none';
+}
+function _obRender() {
+  for (let i = 1; i <= _OB_STEPS; i++) {
+    document.getElementById('ob-step-' + i).style.display = i === _obStep ? '' : 'none';
+  }
+  const dots = document.querySelectorAll('.ob-dot');
+  dots.forEach((d, i) => d.classList.toggle('ob-dot-active', i + 1 === _obStep));
+}
+function initOnboarding() {
+  if (!localStorage.getItem('simdragosa_onboarding_done')) {
+    _obStep = 1;
+    _obRender();
+    document.getElementById('onboarding-backdrop').style.display = 'flex';
+  }
+}
+
 // ── Init ─────────────────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', async () => {
   await loadChars();
   await refreshSettings();
+  await loadRaidsid();
   await initWowFolderStatus();
+  loadAutoDeliverPref();
   const s = await (await fetch('/api/status')).json();
   window._lastStatus = s;
   renderActiveJobs(s.active_jobs || []);
   renderResults(s.results || []);
   if (s.running) startPolling();
+  initOnboarding();
 });
 
 // ── Characters ────────────────────────────────────────────────────────────────
@@ -681,6 +852,7 @@ function openModal(id = null) {
   document.getElementById('f-loot-spec-id').value = c?.loot_spec_id  ?? '';
   document.getElementById('f-crafted-stats').value = c?.crafted_stats ?? '36/49';
   document.getElementById('f-exclude-updates').checked = c?.exclude_from_item_updates ?? false;
+  document.querySelectorAll('#modal-bg details').forEach(d => d.removeAttribute('open'));
   document.getElementById('modal-bg').classList.add('open');
   document.getElementById('f-name').focus();
 }
@@ -762,6 +934,31 @@ async function saveSettings() {
   document.getElementById('settings-panel').classList.remove('open');
   await refreshSettings();
   showToast('Settings saved');
+}
+
+function openRaidsidHelp() {
+  const el = document.getElementById('raidsid-help-backdrop');
+  el.style.display = 'flex';
+}
+function closeRaidsidHelp() {
+  document.getElementById('raidsid-help-backdrop').style.display = 'none';
+}
+
+document.getElementById('raidsid-help-backdrop').addEventListener('click', function(e) {
+  if (e.target === this) closeRaidsidHelp();
+});
+
+async function loadRaidsid() {
+  try {
+    const r = await fetch('/api/raidsid');
+    const d = await r.json();
+    if (d.raidsid) document.getElementById('raidsid-input').value = d.raidsid;
+  } catch(e) {}
+}
+async function saveRaidsid() {
+  const val = document.getElementById('raidsid-input').value.trim();
+  await fetch('/api/raidsid', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({raidsid: val}) });
+  showToast('Raidbots session ID saved');
 }
 
 // ── File System Access API — WoW folder auto-write ────────────────────────────
@@ -964,13 +1161,17 @@ async function pollStatus() {
     pollTimer = null;
     if (_simsWereRunning) {
       _simsWereRunning = false;
-      const result = await _deliverLua();
-      showToast(
-        result === 'written'       ? 'Sims done — SimdragosaData.lua written to WoW folder ✓' :
-        result === 'no-permission' ? 'Sims done — reconnect WoW folder in Settings' :
-                                     'Sims done — SimdragosaData.lua downloaded',
-        result === 'no-permission', 4000
-      );
+      if (localStorage.getItem('simdragosa_auto_deliver') === 'true') {
+        const result = await _deliverLua();
+        showToast(
+          result === 'written'       ? 'Sims done — SimdragosaData.lua written to WoW folder ✓' :
+          result === 'no-permission' ? 'Sims done — reconnect WoW folder in Settings' :
+                                       'Sims done — SimdragosaData.lua downloaded',
+          result === 'no-permission', 4000
+        );
+      } else {
+        showToast('Sims done', false, 3000);
+      }
     }
   }
 }
