@@ -191,6 +191,12 @@ input[type=checkbox]:indeterminate { accent-color: var(--accent); opacity: 0.6; 
 /* Extra badge variants */
 .badge-skipped   { background: #2a2a3e; color: var(--sub); }
 .badge-cancelled { background: #2a2a3e; color: var(--sub); }
+.toggle-switch { position:relative; display:inline-block; width:40px; height:22px; }
+.toggle-switch input { opacity:0; width:0; height:0; }
+.toggle-slider { position:absolute; cursor:pointer; inset:0; background:var(--surf2); border-radius:22px; transition:.2s; }
+.toggle-slider:before { content:""; position:absolute; height:16px; width:16px; left:3px; bottom:3px; background:#fff; border-radius:50%; transition:.2s; }
+.toggle-switch input:checked + .toggle-slider { background:var(--acc-h); }
+.toggle-switch input:checked + .toggle-slider:before { transform:translateX(18px); }
 </style>
 </head>
 <body>
@@ -224,6 +230,16 @@ input[type=checkbox]:indeterminate { accent-color: var(--accent); opacity: 0.6; 
       <button class="btn-secondary" id="wow-connect-btn" style="padding:5px 10px;font-size:12px;flex-shrink:0">Connect folder</button>
     </div>
     <p id="wow-fs-unsupported" style="display:none;font-size:12px;color:var(--sub);margin-top:6px">Direct folder access requires Chrome or Edge. Use the download button below.</p>
+  </div>
+  <div class="settings-row" style="display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border)">
+    <div>
+      <div style="font-size:13px;font-weight:600;color:var(--text)">Auto-deliver Lua after sims</div>
+      <div style="font-size:11px;color:var(--sub);margin-top:2px">Write SimdragosaData.lua automatically when sims complete</div>
+    </div>
+    <label class="toggle-switch" style="flex-shrink:0;margin-left:12px">
+      <input type="checkbox" id="auto-deliver-toggle" onchange="saveAutoDeliverPref()">
+      <span class="toggle-slider"></span>
+    </label>
   </div>
 
 <!-- Folder setup help modal -->
@@ -383,11 +399,21 @@ function groupByName(arr) {
   return map;
 }
 
+// ── Auto-deliver preference ───────────────────────────────────────────────────
+function loadAutoDeliverPref() {
+  const v = localStorage.getItem('simdragosa_auto_deliver');
+  document.getElementById('auto-deliver-toggle').checked = v === 'true';
+}
+function saveAutoDeliverPref() {
+  localStorage.setItem('simdragosa_auto_deliver', document.getElementById('auto-deliver-toggle').checked);
+}
+
 // ── Init ─────────────────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', async () => {
   await loadChars();
   await refreshSettings();
   await initWowFolderStatus();
+  loadAutoDeliverPref();
   const s = await (await fetch('/api/status')).json();
   window._lastStatus = s;
   renderActiveJobs(s.active_jobs || []);
@@ -991,13 +1017,17 @@ async function pollStatus() {
     pollTimer = null;
     if (_simsWereRunning) {
       _simsWereRunning = false;
-      const result = await _deliverLua();
-      showToast(
-        result === 'written'       ? 'Sims done — SimdragosaData.lua written to WoW folder ✓' :
-        result === 'no-permission' ? 'Sims done — reconnect WoW folder in Settings' :
-                                     'Sims done — SimdragosaData.lua downloaded',
-        result === 'no-permission', 4000
-      );
+      if (localStorage.getItem('simdragosa_auto_deliver') === 'true') {
+        const result = await _deliverLua();
+        showToast(
+          result === 'written'       ? 'Sims done — SimdragosaData.lua written to WoW folder ✓' :
+          result === 'no-permission' ? 'Sims done — reconnect WoW folder in Settings' :
+                                       'Sims done — SimdragosaData.lua downloaded',
+          result === 'no-permission', 4000
+        );
+      } else {
+        showToast('Sims done', false, 3000);
+      }
     }
   }
 }
