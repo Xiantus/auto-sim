@@ -205,9 +205,17 @@ input[type=checkbox]:indeterminate { accent-color: var(--accent); opacity: 0.6; 
 
 <div id="settings-panel">
   <h4>Settings</h4>
-  <div class="field">
-    <label>raidsid cookie</label>
-    <input id="raidsid-input" type="text" placeholder="Paste new raidsid here…">
+  <div style="margin-bottom:16px">
+    <label style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--sub);display:block;margin-bottom:6px">
+      Raidbots Session ID
+      <button class="help-btn" onclick="openRaidsidHelp()" style="margin-left:6px">?</button>
+    </label>
+    <div style="display:flex;gap:8px;align-items:center">
+      <input type="password" id="raidsid-input" placeholder="Paste your raidsid cookie value"
+        style="flex:1;background:var(--surf2);border:1px solid var(--border);border-radius:7px;padding:7px 10px;color:var(--text);font-size:13px;outline:none">
+      <button class="btn-secondary" onclick="saveRaidsid()" style="white-space:nowrap">Save</button>
+    </div>
+    <p style="font-size:11px;color:var(--sub);margin-top:5px">Required to submit sims. Stored only on this server, never shared.</p>
   </div>
   <div class="field">
     <label>WoW data folder <span style="color:var(--sub);font-weight:400;text-transform:none;font-size:11px">writes SimdragosaData.lua after each sim</span> <button class="help-btn" onclick="openFolderHelp()" title="Setup instructions">?</button></label>
@@ -302,17 +310,35 @@ input[type=checkbox]:indeterminate { accent-color: var(--accent); opacity: 0.6; 
         <label>Realm</label>
         <input id="f-realm" type="text" placeholder="draenor">
       </div>
-      <div class="field">
-        <label>Spec ID</label>
-        <input id="f-spec-id" type="number" placeholder="63">
-      </div>
-      <div class="field">
-        <label>Loot Spec ID</label>
-        <input id="f-loot-spec-id" type="number" placeholder="same as spec id">
-      </div>
+      <details style="margin-bottom:12px;grid-column:1/-1">
+        <summary style="cursor:pointer;font-size:12px;color:var(--sub);user-select:none">Advanced options</summary>
+        <div style="padding-top:10px;display:grid;grid-template-columns:1fr 1fr;gap:12px">
+          <div class="field">
+            <label>Spec ID</label>
+            <input id="f-spec-id" type="number" placeholder="63">
+          </div>
+          <div class="field">
+            <label>Loot Spec ID</label>
+            <input id="f-loot-spec-id" type="number" placeholder="same as spec id">
+          </div>
+        </div>
+      </details>
       <div class="field">
         <label>Crafted Stats</label>
-        <input id="f-crafted-stats" type="text" placeholder="36/49">
+        <select id="f-crafted-stats">
+          <option value="36/49">Haste / Versatility</option>
+          <option value="36/32">Haste / Critical Strike</option>
+          <option value="36/40">Haste / Mastery</option>
+          <option value="32/36">Critical Strike / Haste</option>
+          <option value="32/40">Critical Strike / Mastery</option>
+          <option value="32/49">Critical Strike / Versatility</option>
+          <option value="40/36">Mastery / Haste</option>
+          <option value="40/32">Mastery / Critical Strike</option>
+          <option value="40/49">Mastery / Versatility</option>
+          <option value="49/36">Versatility / Haste</option>
+          <option value="49/32">Versatility / Critical Strike</option>
+          <option value="49/40">Versatility / Mastery</option>
+        </select>
       </div>
     </div>
     <div style="margin-top:14px">
@@ -681,6 +707,7 @@ function openModal(id = null) {
   document.getElementById('f-loot-spec-id').value = c?.loot_spec_id  ?? '';
   document.getElementById('f-crafted-stats').value = c?.crafted_stats ?? '36/49';
   document.getElementById('f-exclude-updates').checked = c?.exclude_from_item_updates ?? false;
+  document.querySelectorAll('#modal-bg details').forEach(d => d.removeAttribute('open'));
   document.getElementById('modal-bg').classList.add('open');
   document.getElementById('f-name').focus();
 }
