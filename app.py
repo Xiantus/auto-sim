@@ -67,6 +67,16 @@ db.init_db()
 
 state = SimRunnerState(RESULTS_PATH)
 
+# ---------------------------------------------------------------------------
+# Raidbots rate-limiting
+# ---------------------------------------------------------------------------
+# Max sims running concurrently (each holds a thread for the full sim duration)
+_MAX_CONCURRENT_SIMS = 8
+# Minimum seconds between each job's first Raidbots API call (fetch + submit)
+_SUBMIT_INTERVAL     = 4.0
+_submit_lock         = threading.Lock()
+_last_submit_ts: float = 0.0
+
 
 def _log(msg: str) -> None:
     state.append_log(msg)
@@ -323,6 +333,15 @@ def _run_one(job: Job, char: dict, raidsid: str, static, user_id: int | None = N
             state.transition(jid, JobStatus.FAILED)
         return
 
+    # Stagger API calls so we never burst Raidbots with simultaneous requests
+    global _last_submit_ts
+    with _submit_lock:
+        now = time.time()
+        gap = _last_submit_ts + _SUBMIT_INTERVAL - now
+        if gap > 0:
+            time.sleep(gap)
+        _last_submit_ts = time.time()
+
     session_rb = make_raidbots_session(raidsid)
 
     state.transition(jid, JobStatus.FETCHING)
@@ -394,7 +413,7 @@ def _run_batch(jobs: list[Job], chars_by_id: dict, raidsid: str, user_id: int | 
         static = fetch_static_data(init_session)
         _log(f"Starting {len(jobs)} job(s)...")
 
-        with ThreadPoolExecutor(max_workers=len(jobs)) as pool:
+        with ThreadPoolExecutor(max_workers=min(len(jobs), _MAX_CONCURRENT_SIMS)) as pool:
             futures = {
                 pool.submit(_run_one, job, chars_by_id[job.char_id], raidsid, static, user_id): job
                 for job in jobs
