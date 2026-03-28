@@ -197,6 +197,10 @@ input[type=checkbox]:indeterminate { accent-color: var(--accent); opacity: 0.6; 
 .toggle-slider:before { content:""; position:absolute; height:16px; width:16px; left:3px; bottom:3px; background:#fff; border-radius:50%; transition:.2s; }
 .toggle-switch input:checked + .toggle-slider { background:var(--acc-h); }
 .toggle-switch input:checked + .toggle-slider:before { transform:translateX(18px); }
+
+/* Onboarding step dots */
+.ob-dot { width:8px; height:8px; border-radius:50%; background:var(--surf2); border:1px solid var(--border); transition:.2s; }
+.ob-dot-active { background:var(--acc-h); border-color:var(--acc-h); }
 </style>
 </head>
 <body>
@@ -205,6 +209,7 @@ input[type=checkbox]:indeterminate { accent-color: var(--accent); opacity: 0.6; 
   <h1><img src="/static/simdragosa-logo.svg" alt="" style="height:38px;width:auto;vertical-align:middle;margin-right:6px;"> Simdragosa</h1>
   <span id="raidsid-status"></span>
   <span style="font-size:12px;color:var(--sub)">{{ session.username }}</span>
+  <button class="btn-secondary" onclick="_obStep=1;_obRender();document.getElementById('onboarding-backdrop').style.display='flex'" style="font-size:11px;padding:4px 8px">Getting started</button>
   <button id="settings-btn" onclick="toggleSettings()">⚙ Settings</button>
   <a href="/logout" style="background:none;border:1px solid var(--border);color:var(--sub);border-radius:6px;padding:5px 10px;cursor:pointer;font-size:13px;text-decoration:none;" onmouseover="this.style.borderColor='var(--accent)';this.style.color='var(--text)'" onmouseout="this.style.borderColor='var(--border)';this.style.color='var(--sub)'">Log out</a>
 </header>
@@ -256,6 +261,21 @@ input[type=checkbox]:indeterminate { accent-color: var(--accent); opacity: 0.6; 
     <p style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--sub);margin-bottom:6px">Step 3 — connect the folder here</p>
     <p style="font-size:13px;color:var(--text);line-height:1.6;margin-bottom:16px">Click <strong>Connect folder</strong> and select the <code>Simdragosa</code> folder inside your Documents. Done — SimdragosaData.lua will be written there automatically after every sim and WoW loads it via the junction.</p>
     <button class="btn-primary" onclick="closeFolderHelp()" style="width:100%">Got it</button>
+  </div>
+</div>
+<div id="raidsid-help-backdrop" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:1100;align-items:center;justify-content:center">
+  <div style="background:var(--surf);border:1px solid var(--border);border-radius:12px;padding:24px;max-width:480px;width:90%;max-height:80vh;overflow-y:auto">
+    <h3 style="margin-bottom:12px;color:var(--acc-h)">How to find your Raidbots session ID</h3>
+    <ol style="font-size:13px;color:var(--text);line-height:1.8;padding-left:18px;margin-bottom:16px">
+      <li>Open <strong>raidbots.com</strong> in Chrome or Edge (no account required).</li>
+      <li>Press <strong>F12</strong> to open DevTools.</li>
+      <li>Go to the <strong>Application</strong> tab.</li>
+      <li>In the left sidebar, expand <strong>Cookies</strong> and click <code>https://www.raidbots.com</code>.</li>
+      <li>Find the cookie named <strong><code>raidsid</code></strong> and copy its <strong>Value</strong>.</li>
+      <li>Paste it in the field above and click <strong>Save</strong>.</li>
+    </ol>
+    <p style="font-size:12px;color:var(--sub);margin-bottom:16px">The raidsid cookie acts as your session token. It does not require a paid Raidbots account, but a free account increases your sim quota.</p>
+    <button class="btn-primary" onclick="closeRaidsidHelp()" style="width:100%">Got it</button>
   </div>
 </div>
   <button class="btn-primary" onclick="saveSettings()" style="width:100%;margin-bottom:8px">Save</button>
@@ -372,6 +392,74 @@ input[type=checkbox]:indeterminate { accent-color: var(--accent); opacity: 0.6; 
 
 <div id="toast"></div>
 
+<!-- Onboarding modal -->
+<div id="onboarding-backdrop" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:1200;align-items:center;justify-content:center">
+  <div style="background:var(--surf);border:1px solid var(--border);border-radius:14px;padding:28px;max-width:520px;width:92%;max-height:85vh;overflow-y:auto">
+
+    <!-- Step indicators -->
+    <div style="display:flex;gap:6px;justify-content:center;margin-bottom:20px" id="ob-steps">
+      <div class="ob-dot ob-dot-active"></div>
+      <div class="ob-dot"></div>
+      <div class="ob-dot"></div>
+    </div>
+
+    <!-- Step 1 -->
+    <div id="ob-step-1">
+      <h3 style="color:var(--acc-h);margin-bottom:10px">Welcome to Simdragosa 👋</h3>
+      <p style="font-size:13px;color:var(--text);line-height:1.7;margin-bottom:12px">
+        To submit sims you need a <strong>Raidbots session ID</strong>. This is a cookie from raidbots.com that lets the app submit sims on your behalf — no paid account needed.
+      </p>
+      <ol style="font-size:13px;color:var(--text);line-height:1.9;padding-left:18px;margin-bottom:16px">
+        <li>Open <a href="https://www.raidbots.com" target="_blank" style="color:var(--acc-h)">raidbots.com</a> in this browser.</li>
+        <li>Press <strong>F12</strong> → <strong>Application</strong> tab → <strong>Cookies</strong> → raidbots.com</li>
+        <li>Copy the value of the <code>raidsid</code> cookie.</li>
+        <li>Paste it in <strong>Settings → Raidbots Session ID</strong>.</li>
+      </ol>
+      <p style="font-size:12px;color:var(--sub);margin-bottom:20px">You can do this after closing this guide — the setting is always accessible in the top-right Settings panel.</p>
+      <div style="display:flex;justify-content:flex-end">
+        <button class="btn-primary" onclick="obNext()">Next →</button>
+      </div>
+    </div>
+
+    <!-- Step 2 -->
+    <div id="ob-step-2" style="display:none">
+      <h3 style="color:var(--acc-h);margin-bottom:10px">Add your character</h3>
+      <p style="font-size:13px;color:var(--text);line-height:1.7;margin-bottom:12px">
+        Click <strong>+ Add Character</strong> in the sidebar and paste your SimC string. The app will auto-fill your name, spec, realm, and region.
+      </p>
+      <p style="font-size:13px;color:var(--text);line-height:1.7;margin-bottom:8px"><strong>How to get your SimC string:</strong></p>
+      <ul style="font-size:13px;color:var(--text);line-height:1.9;padding-left:18px;margin-bottom:16px">
+        <li>Install the <strong>SimulationCraft</strong> in-game addon and use <code>/simc</code>, <em>or</em></li>
+        <li>Go to raidbots.com → Top Gear → <strong>Get SimC</strong> button at the top.</li>
+      </ul>
+      <p style="font-size:12px;color:var(--sub);margin-bottom:20px">You can add multiple characters and multiple specs per character.</p>
+      <div style="display:flex;justify-content:space-between">
+        <button class="btn-secondary" onclick="obBack()">← Back</button>
+        <button class="btn-primary" onclick="obNext()">Next →</button>
+      </div>
+    </div>
+
+    <!-- Step 3 -->
+    <div id="ob-step-3" style="display:none">
+      <h3 style="color:var(--acc-h);margin-bottom:10px">Auto Lua delivery <span style="font-size:12px;color:var(--sub);font-weight:400">(optional)</span></h3>
+      <p style="font-size:13px;color:var(--text);line-height:1.7;margin-bottom:12px">
+        If you use the <strong>Simdragosa WoW addon</strong>, you can have <code>SimdragosaData.lua</code> written to your WoW folder automatically after every sim — no manual file moving.
+      </p>
+      <ol style="font-size:13px;color:var(--text);line-height:1.9;padding-left:18px;margin-bottom:12px">
+        <li>In <strong>Settings</strong>, enable <em>Auto-deliver Lua after sims</em>.</li>
+        <li>Click <strong>Connect folder</strong> and select your <code>Documents\Simdragosa</code> folder.</li>
+        <li>If this is your first time, click the <strong>?</strong> next to "WoW data folder" for the one-time junction setup instructions.</li>
+      </ol>
+      <p style="font-size:12px;color:var(--sub);margin-bottom:20px">This requires Chrome or Edge. You can skip this step and use the manual download button instead.</p>
+      <div style="display:flex;justify-content:space-between">
+        <button class="btn-secondary" onclick="obBack()">← Back</button>
+        <button class="btn-primary" onclick="obFinish()">Get started!</button>
+      </div>
+    </div>
+
+  </div>
+</div>
+
 <script>
 let chars = [];
 let editingId = null;
@@ -408,6 +496,35 @@ function saveAutoDeliverPref() {
   localStorage.setItem('simdragosa_auto_deliver', document.getElementById('auto-deliver-toggle').checked);
 }
 
+// ── Onboarding ────────────────────────────────────────────────────────────────
+let _obStep = 1;
+const _OB_STEPS = 3;
+
+function obNext() {
+  if (_obStep < _OB_STEPS) { _obStep++; _obRender(); }
+}
+function obBack() {
+  if (_obStep > 1) { _obStep--; _obRender(); }
+}
+function obFinish() {
+  localStorage.setItem('simdragosa_onboarding_done', 'true');
+  document.getElementById('onboarding-backdrop').style.display = 'none';
+}
+function _obRender() {
+  for (let i = 1; i <= _OB_STEPS; i++) {
+    document.getElementById('ob-step-' + i).style.display = i === _obStep ? '' : 'none';
+  }
+  const dots = document.querySelectorAll('.ob-dot');
+  dots.forEach((d, i) => d.classList.toggle('ob-dot-active', i + 1 === _obStep));
+}
+function initOnboarding() {
+  if (!localStorage.getItem('simdragosa_onboarding_done')) {
+    _obStep = 1;
+    _obRender();
+    document.getElementById('onboarding-backdrop').style.display = 'flex';
+  }
+}
+
 // ── Init ─────────────────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', async () => {
   await loadChars();
@@ -419,6 +536,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   renderActiveJobs(s.active_jobs || []);
   renderResults(s.results || []);
   if (s.running) startPolling();
+  initOnboarding();
 });
 
 // ── Characters ────────────────────────────────────────────────────────────────
@@ -815,6 +933,27 @@ async function saveSettings() {
   document.getElementById('settings-panel').classList.remove('open');
   await refreshSettings();
   showToast('Settings saved');
+}
+
+function openRaidsidHelp() {
+  const el = document.getElementById('raidsid-help-backdrop');
+  el.style.display = 'flex';
+}
+function closeRaidsidHelp() {
+  document.getElementById('raidsid-help-backdrop').style.display = 'none';
+}
+
+async function loadRaidsid() {
+  try {
+    const r = await fetch('/api/raidsid');
+    const d = await r.json();
+    if (d.raidsid) document.getElementById('raidsid-input').value = d.raidsid;
+  } catch(e) {}
+}
+async function saveRaidsid() {
+  const val = document.getElementById('raidsid-input').value.trim();
+  await fetch('/api/raidsid', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({raidsid: val}) });
+  showToast('Raidbots session ID saved');
 }
 
 // ── File System Access API — WoW folder auto-write ────────────────────────────
