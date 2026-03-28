@@ -27,6 +27,39 @@ def _connect():
 # Schema
 # ---------------------------------------------------------------------------
 
+def _migrate_tooltip_add_spec(conn) -> None:
+    """One-time migration: add spec column + rebuild PK to include spec."""
+    cols = [r[1] for r in conn.execute("PRAGMA table_info(tooltip_data)").fetchall()]
+    if "spec" in cols:
+        return  # already migrated
+    conn.executescript("""
+        ALTER TABLE tooltip_data RENAME TO tooltip_data_old;
+
+        CREATE TABLE tooltip_data (
+            item_id    INTEGER NOT NULL,
+            user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            char_name  TEXT    NOT NULL,
+            realm      TEXT    NOT NULL,
+            spec       TEXT    NOT NULL DEFAULT '',
+            difficulty TEXT    NOT NULL,
+            dps_gain   REAL    NOT NULL,
+            ilvl       INTEGER,
+            item_name  TEXT,
+            sim_date   TEXT    NOT NULL,
+            PRIMARY KEY (item_id, user_id, char_name, difficulty, spec)
+        );
+
+        INSERT INTO tooltip_data
+            (item_id, user_id, char_name, realm, spec, difficulty,
+             dps_gain, ilvl, item_name, sim_date)
+        SELECT item_id, user_id, char_name, realm, '' AS spec, difficulty,
+               dps_gain, ilvl, item_name, sim_date
+        FROM tooltip_data_old;
+
+        DROP TABLE tooltip_data_old;
+    """)
+
+
 def init_db() -> None:
     with _connect() as conn:
         conn.execute("""
@@ -65,14 +98,17 @@ def init_db() -> None:
                 user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
                 char_name  TEXT    NOT NULL,
                 realm      TEXT    NOT NULL,
+                spec       TEXT    NOT NULL DEFAULT '',
                 difficulty TEXT    NOT NULL,
                 dps_gain   REAL    NOT NULL,
                 ilvl       INTEGER,
                 item_name  TEXT,
                 sim_date   TEXT    NOT NULL,
-                PRIMARY KEY (item_id, user_id, char_name, difficulty)
+                PRIMARY KEY (item_id, user_id, char_name, difficulty, spec)
             )
         """)
+        # Migration: rebuild tooltip_data to add spec column + updated PK
+        _migrate_tooltip_add_spec(conn)
 
 
 # ---------------------------------------------------------------------------
@@ -202,36 +238,38 @@ def upsert_tooltip_entries(
     user_id: int,
     char_name: str,
     realm: str,
+    spec: str,
     difficulty: str,
     entries: list[dict],
     sim_date: str,
 ) -> None:
-    """Bulk-upsert item DPS gains for one character + difficulty from a completed sim."""
+    """Bulk-upsert item DPS gains for one character + spec + difficulty from a completed sim."""
     with _connect() as conn:
         for e in entries:
             conn.execute("""
                 INSERT INTO tooltip_data
-                    (item_id, user_id, char_name, realm, difficulty,
+                    (item_id, user_id, char_name, realm, spec, difficulty,
                      dps_gain, ilvl, item_name, sim_date)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-                ON CONFLICT(item_id, user_id, char_name, difficulty) DO UPDATE SET
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(item_id, user_id, char_name, difficulty, spec) DO UPDATE SET
                     dps_gain  = excluded.dps_gain,
                     ilvl      = excluded.ilvl,
                     item_name = excluded.item_name,
                     sim_date  = excluded.sim_date
             """, (
-                e["item_id"], user_id, char_name, realm, difficulty,
+                e["item_id"], user_id, char_name, realm, spec, difficulty,
                 e["dps_gain"], e.get("ilvl"), e.get("item_name"), sim_date,
             ))
 
 
 def load_tooltip_data_for_user(user_id: int) -> dict:
-    """Return {char_key: {item_id: {difficulty: dps_gain, ilvl, name, date}}} for Lua export."""
+    """Return nested dict for Lua export, grouped by char → item → spec → difficulty."""
     with _connect() as conn:
         rows = conn.execute(
-            """SELECT char_name, realm, difficulty, item_id, dps_gain, ilvl, item_name, sim_date
+            """SELECT char_name, realm, spec, difficulty, item_id,
+                      dps_gain, ilvl, item_name, sim_date
                FROM tooltip_data WHERE user_id = ?
-               ORDER BY char_name, item_id""",
+               ORDER BY char_name, item_id, spec""",
             (user_id,),
         ).fetchall()
 
@@ -240,23 +278,27 @@ def load_tooltip_data_for_user(user_id: int) -> dict:
         key = f"{r['char_name']}-{r['realm'].replace(' ', '').title()}"
         result.setdefault(key, {})
         item_id = r["item_id"]
-        result[key].setdefault(item_id, {
-            "ilvl": r["ilvl"],
-            "name": r["item_name"] or "",
-            "updated": r["sim_date"],
-        })
-        # Derive Lua label from ilvl (ground truth) with difficulty fallback.
-        # Tracks: Myth ≥289, Hero ≥276, Champion ≥263.
+
+        if item_id not in result[key]:
+            result[key][item_id] = {
+                "ilvl":    r["ilvl"],
+                "name":    r["item_name"] or "",
+                "updated": r["sim_date"],
+                "specs":   {},   # {spec_name: {diff_key: dps_gain}}
+            }
+
+        # Derive track label from ilvl (ground truth) with difficulty fallback
         ilvl = r["ilvl"]
         if ilvl is not None:
             if   ilvl >= 289: diff_key = "mythic"
             elif ilvl >= 276: diff_key = "heroic"
             else:             diff_key = "champion"
-        elif "heroic" in r["difficulty"]:
-            diff_key = "heroic"
-        elif "mythic" in r["difficulty"]:
-            diff_key = "mythic"
-        else:
-            diff_key = "champion"
-        result[key][item_id][diff_key] = r["dps_gain"]
+        elif "heroic" in r["difficulty"]:  diff_key = "heroic"
+        elif "mythic" in r["difficulty"]:  diff_key = "mythic"
+        else:                              diff_key = "champion"
+
+        spec_name = r["spec"] or ""
+        result[key][item_id]["specs"].setdefault(spec_name, {})
+        result[key][item_id]["specs"][spec_name][diff_key] = r["dps_gain"]
+
     return result

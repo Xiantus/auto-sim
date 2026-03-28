@@ -206,32 +206,36 @@ def _parse_tooltip_data(report_json: dict) -> list[dict]:
 
 def _build_lua(user_id: int) -> str:
     """Generate the SimdragosaData.lua content for a user's tooltip data."""
-    data     = db.load_tooltip_data_for_user(user_id)
-    now      = datetime.utcnow().strftime("%Y-%m-%d %H:%M UTC")
-    lines    = [
-        f"-- SimdragosaData.lua  (place in Interface/AddOns/Simdragosa/)",
+    data = db.load_tooltip_data_for_user(user_id)
+    now  = datetime.utcnow().strftime("%Y-%m-%d %H:%M UTC")
+    lines = [
+        "-- SimdragosaData.lua  (place in Interface/AddOns/Simdragosa/data/)",
         f"-- Generated: {now}",
-        f"-- Do not edit manually — regenerated after each sim run.",
-        f"",
-        f"SimdragosaDB = {{",
+        "-- Do not edit manually — regenerated after each sim run.",
+        "",
+        "SimdragosaDB = {",
     ]
     for char_key, items in sorted(data.items()):
         lines.append(f'  ["{char_key}"] = {{')
         for item_id, info in sorted(items.items()):
-            parts = []
-            if "champion" in info:
-                parts.append(f"champion={info['champion']}")
-            if "heroic" in info:
-                parts.append(f"heroic={info['heroic']}")
-            if "mythic" in info:
-                parts.append(f"mythic={info['mythic']}")
+            lines.append(f"    [{item_id}] = {{")
+            # specs array — one entry per spec with its per-track gains
+            lines.append("      specs = {")
+            for spec_name, gains in sorted(info.get("specs", {}).items()):
+                spec_parts = [f'spec="{spec_name}"']
+                for diff_key in ("champion", "heroic", "mythic"):
+                    if diff_key in gains:
+                        spec_parts.append(f"{diff_key}={gains[diff_key]}")
+                lines.append(f"        {{ {', '.join(spec_parts)} }},")
+            lines.append("      },")
+            # item metadata
             if info.get("ilvl"):
-                parts.append(f"ilvl={info['ilvl']}")
+                lines.append(f"      ilvl={info['ilvl']},")
             if info.get("name"):
                 safe_name = info["name"].replace('"', '\\"')
-                parts.append(f'name="{safe_name}"')
-            parts.append(f'updated="{info.get("updated", "")}"')
-            lines.append(f"    [{item_id}] = {{ {', '.join(parts)} }},")
+                lines.append(f'      name="{safe_name}",')
+            lines.append(f'      updated="{info.get("updated", "")}",')
+            lines.append("    },")
         lines.append("  },")
     lines.append("}")
     return "\n".join(lines) + "\n"
@@ -274,6 +278,7 @@ def _fetch_and_store_tooltip_data(
             user_id=user_id,
             char_name=char["name"],
             realm=char.get("realm", ""),
+            spec=char.get("spec", ""),
             difficulty=difficulty,
             entries=entries,
             sim_date=sim_date,
