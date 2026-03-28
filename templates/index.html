@@ -26,7 +26,10 @@ header { display: flex; align-items: center; gap: 12px; padding: 0 20px; height:
 header h1 { font-size: 1rem; font-weight: 700; letter-spacing: .04em; color: var(--acc-h); flex: 1; }
 #settings-btn { background: none; border: 1px solid var(--border); color: var(--sub); border-radius: 6px; padding: 5px 10px; cursor: pointer; font-size: 13px; }
 #settings-btn:hover { border-color: var(--accent); color: var(--text); }
-#raidsid-status { font-size: 12px; color: var(--sub); }
+#sim-ready-badge { display:inline-flex; align-items:center; gap:5px; font-size:12px; font-weight:600; padding:3px 9px; border-radius:20px; cursor:default; transition:.2s; }
+#sim-ready-badge.ready  { background:rgba(74,222,128,.12); color:var(--green); border:1px solid rgba(74,222,128,.3); }
+#sim-ready-badge.not-ready { background:rgba(248,113,113,.12); color:var(--red); border:1px solid rgba(248,113,113,.3); cursor:pointer; }
+#sim-ready-badge .dot { width:6px; height:6px; border-radius:50%; background:currentColor; }
 
 /* Layout */
 .main { display: flex; flex: 1; overflow: hidden; }
@@ -207,7 +210,7 @@ input[type=checkbox]:indeterminate { accent-color: var(--accent); opacity: 0.6; 
 
 <header>
   <h1><img src="/static/simdragosa-logo.svg" alt="" style="height:38px;width:auto;vertical-align:middle;margin-right:6px;"> Simdragosa</h1>
-  <span id="raidsid-status"></span>
+  <span id="sim-ready-badge" class="not-ready" onclick="toggleSettings()" title="Click to open Settings"><span class="dot"></span><span id="sim-ready-label">No raidsid</span></span>
   <span style="font-size:12px;color:var(--sub)">{{ session.username }}</span>
   <script>const _CURRENT_USER = {{ session.username | tojson }};</script>
   <button class="btn-secondary" onclick="_obStep=1;_obRender();document.getElementById('onboarding-backdrop').style.display='flex'" style="font-size:11px;padding:4px 8px">Getting started</button>
@@ -918,9 +921,15 @@ async function deleteChar(id) {
 
 // ── Settings ──────────────────────────────────────────────────────────────────
 async function refreshSettings() {
-  const r = await fetch('/api/settings');
+  const r = await fetch('/api/raidsid');
   const d = await r.json();
-  document.getElementById('raidsid-status').textContent = d.has_raidsid ? `raidsid: ${d.raidsid_masked}` : 'no raidsid';
+  const ready = !!(d.raidsid && d.raidsid.length > 0);
+  const badge = document.getElementById('sim-ready-badge');
+  const label = document.getElementById('sim-ready-label');
+  badge.className = ready ? 'ready' : 'not-ready';
+  badge.title = ready ? 'Sim ready' : 'Click to open Settings and add your Raidbots session ID';
+  badge.onclick = ready ? null : toggleSettings;
+  label.textContent = ready ? 'Sim ready' : 'No raidsid';
 }
 
 function toggleSettings() {
@@ -959,6 +968,7 @@ async function loadRaidsid() {
 async function saveRaidsid() {
   const val = document.getElementById('raidsid-input').value.trim();
   await fetch('/api/raidsid', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({raidsid: val}) });
+  await refreshSettings();
   showToast('Raidbots session ID saved');
 }
 
