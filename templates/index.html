@@ -529,6 +529,7 @@ function initOnboarding() {
 document.addEventListener('DOMContentLoaded', async () => {
   await loadChars();
   await refreshSettings();
+  await loadRaidsid();
   await initWowFolderStatus();
   loadAutoDeliverPref();
   const s = await (await fetch('/api/status')).json();
@@ -942,6 +943,10 @@ function openRaidsidHelp() {
 function closeRaidsidHelp() {
   document.getElementById('raidsid-help-backdrop').style.display = 'none';
 }
+
+document.getElementById('raidsid-help-backdrop').addEventListener('click', function(e) {
+  if (e.target === this) closeRaidsidHelp();
+});
 
 async function loadRaidsid() {
   try {

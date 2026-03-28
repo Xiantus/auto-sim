@@ -33,9 +33,15 @@ def init_db() -> None:
             CREATE TABLE IF NOT EXISTS users (
                 id            INTEGER PRIMARY KEY AUTOINCREMENT,
                 username      TEXT    NOT NULL UNIQUE,
-                password_hash TEXT    NOT NULL
+                password_hash TEXT    NOT NULL,
+                raidsid       TEXT
             )
         """)
+        try:
+            conn.execute("ALTER TABLE users ADD COLUMN raidsid TEXT")
+            conn.commit()
+        except Exception:
+            pass  # column already exists
         conn.execute("""
             CREATE TABLE IF NOT EXISTS characters (
                 id                        TEXT    NOT NULL,
@@ -96,6 +102,21 @@ def get_user_by_id(user_id: int) -> dict | None:
             "SELECT * FROM users WHERE id = ?", (user_id,)
         ).fetchone()
     return dict(row) if row else None
+
+
+def get_raidsid(user_id: int) -> str | None:
+    with _connect() as conn:
+        row = conn.execute(
+            "SELECT raidsid FROM users WHERE id = ?", (user_id,)
+        ).fetchone()
+    return row["raidsid"] if row else None
+
+
+def set_raidsid(user_id: int, raidsid: str) -> None:
+    with _connect() as conn:
+        conn.execute(
+            "UPDATE users SET raidsid = ? WHERE id = ?", (raidsid, user_id)
+        )
 
 
 # ---------------------------------------------------------------------------
