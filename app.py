@@ -561,6 +561,22 @@ def api_save_settings():
     return jsonify({"ok": True})
 
 
+@app.get("/api/raidsid")
+@require_login
+def api_get_raidsid():
+    val = db.get_raidsid(session["user_id"])
+    return jsonify({"raidsid": val or ""})
+
+
+@app.post("/api/raidsid")
+@require_login
+def api_set_raidsid():
+    data = request.get_json(force=True)
+    val = (data.get("raidsid") or "").strip()
+    db.set_raidsid(session["user_id"], val if val else None)
+    return jsonify({"ok": True})
+
+
 @app.get("/api/tooltip-export")
 @require_login
 def api_tooltip_export():
@@ -657,6 +673,7 @@ def api_run():
                     difficulty=diff,
                     build_label=build_label,
                     talent_code=talent_code,
+                    user_id=user_id,
                 ))
 
     if not jobs:
@@ -674,7 +691,7 @@ def api_run():
 @app.get("/api/status")
 @require_login
 def api_status():
-    return jsonify(state.snapshot())
+    return jsonify(state.snapshot_for_user(session["user_id"]))
 
 
 if __name__ == "__main__":
