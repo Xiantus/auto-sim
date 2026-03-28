@@ -209,6 +209,7 @@ input[type=checkbox]:indeterminate { accent-color: var(--accent); opacity: 0.6; 
   <h1><img src="/static/simdragosa-logo.svg" alt="" style="height:38px;width:auto;vertical-align:middle;margin-right:6px;"> Simdragosa</h1>
   <span id="raidsid-status"></span>
   <span style="font-size:12px;color:var(--sub)">{{ session.username }}</span>
+  <script>const _CURRENT_USER = {{ session.username | tojson }};</script>
   <button class="btn-secondary" onclick="_obStep=1;_obRender();document.getElementById('onboarding-backdrop').style.display='flex'" style="font-size:11px;padding:4px 8px">Getting started</button>
   <button id="settings-btn" onclick="toggleSettings()">⚙ Settings</button>
   <a href="/logout" style="background:none;border:1px solid var(--border);color:var(--sub);border-radius:6px;padding:5px 10px;cursor:pointer;font-size:13px;text-decoration:none;" onmouseover="this.style.borderColor='var(--accent)';this.style.color='var(--text)'" onmouseout="this.style.borderColor='var(--border)';this.style.color='var(--sub)'">Log out</a>
@@ -507,7 +508,7 @@ function obBack() {
   if (_obStep > 1) { _obStep--; _obRender(); }
 }
 function obFinish() {
-  localStorage.setItem('simdragosa_onboarding_done', 'true');
+  localStorage.setItem('simdragosa_onboarding_done_' + _CURRENT_USER, 'true');
   document.getElementById('onboarding-backdrop').style.display = 'none';
 }
 function _obRender() {
@@ -518,7 +519,7 @@ function _obRender() {
   dots.forEach((d, i) => d.classList.toggle('ob-dot-active', i + 1 === _obStep));
 }
 function initOnboarding() {
-  if (!localStorage.getItem('simdragosa_onboarding_done')) {
+  if (!localStorage.getItem('simdragosa_onboarding_done_' + _CURRENT_USER)) {
     _obStep = 1;
     _obRender();
     document.getElementById('onboarding-backdrop').style.display = 'flex';
