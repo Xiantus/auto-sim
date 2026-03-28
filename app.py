@@ -679,7 +679,7 @@ def api_run():
     if not jobs:
         return jsonify({"error": "Nothing selected"}), 400
 
-    raidsid = db.get_raidsid(user_id) or load_raidsid()
+    raidsid = db.get_raidsid(user_id)
     if not raidsid:
         return jsonify({"error": "No Raidbots session ID configured. Go to Settings \u2192 Raidbots Session ID."}), 400
 
