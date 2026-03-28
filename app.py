@@ -300,7 +300,7 @@ _SPEC_ID_TO_NAME: dict[int, str] = {
     262: "Elemental", 263: "Enhancement", 264: "Restoration",
     265: "Affliction", 266: "Demonology", 267: "Destruction",
     268: "Brewmaster", 269: "Windwalker", 270: "Mistweaver",
-    577: "Havoc", 581: "Vengeance",
+    577: "Havoc", 581: "Vengeance", 1480: "Devourer",
     1467: "Devastation", 1468: "Preservation", 1473: "Augmentation",
 }
 
