@@ -787,10 +787,10 @@ const SPEC_IDS = {
   warlock:      { affliction:265, demonology:266, destruction:267 },
   monk:         { brewmaster:268, windwalker:269, mistweaver:270 },
   druid:        { balance:102, feral:103, guardian:104, restoration:105 },
-  'demon_hunter':{ havoc:577, vengeance:581, devourer:1480 },
+  'demon_hunter':{ havoc:577, vengeance:581 },
   evoker:       { devastation:1467, preservation:1468, augmentation:1473 },
   'death knight':{ blood:250, frost:251, unholy:252 },
-  'demon hunter':{ havoc:577, vengeance:581, devourer:1480 },
+  'demon hunter':{ havoc:577, vengeance:581 },
 };
 
 function parseSimc() {
@@ -836,8 +836,11 @@ function parseSimc() {
     const classSpecs = SPEC_IDS[charClass] ?? SPEC_IDS[charClass?.replace('_', ' ')];
     const specId = classSpecs?.[spec] ?? classSpecs?.[spec.replace(/ /g, '_')];
     if (specId) {
-      document.getElementById('f-spec-id').value      = specId;
-      document.getElementById('f-loot-spec-id').value = specId;
+      document.getElementById('f-spec-id').value = specId;
+      // Only set loot spec if it hasn't been pre-filled (preserves custom loot specs on edit)
+      if (!document.getElementById('f-loot-spec-id').value) {
+        document.getElementById('f-loot-spec-id').value = specId;
+      }
     }
   }
 }
@@ -857,6 +860,8 @@ function openModal(id = null) {
   document.getElementById('f-crafted-stats').value = c?.crafted_stats ?? '36/49';
   document.getElementById('f-exclude-updates').checked = c?.exclude_from_item_updates ?? false;
   document.querySelectorAll('#modal-bg details').forEach(d => d.removeAttribute('open'));
+  // Re-derive spec_id from the stored SimC string so a stale DB value can't persist silently
+  parseSimc();
   document.getElementById('modal-bg').classList.add('open');
   document.getElementById('f-name').focus();
 }
