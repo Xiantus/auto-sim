@@ -662,10 +662,14 @@ def api_run():
     if not jobs:
         return jsonify({"error": "Nothing selected"}), 400
 
+    raidsid = db.get_raidsid(user_id) or load_raidsid()
+    if not raidsid:
+        return jsonify({"error": "No Raidbots session ID configured. Go to Settings \u2192 Raidbots Session ID."}), 400
+
     state.add_jobs(jobs)
     threading.Thread(
         target=_run_batch,
-        args=(jobs, chars_by_id, load_raidsid(), session["user_id"]),
+        args=(jobs, chars_by_id, raidsid, user_id),
         daemon=True,
     ).start()
     return jsonify({"ok": True})
