@@ -71,9 +71,9 @@ state = SimRunnerState(RESULTS_PATH)
 # Raidbots rate-limiting
 # ---------------------------------------------------------------------------
 # Max sims running concurrently (each holds a thread for the full sim duration)
-_MAX_CONCURRENT_SIMS = 8
+_MAX_CONCURRENT_SIMS = 10
 # Minimum seconds between each job's first Raidbots API call (fetch + submit)
-_SUBMIT_INTERVAL     = 4.0
+_SUBMIT_INTERVAL     = 2.0
 _submit_lock         = threading.Lock()
 _last_submit_ts: float = 0.0
 
