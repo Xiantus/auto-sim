@@ -100,6 +100,7 @@ class Job:
     started_at:   Optional[float] = None
     completed_at: Optional[float] = None
     log_lines:    list           = field(default_factory=list)
+    user_id:      Optional[int]  = None
 
     def as_dict(self) -> dict:
         return {
@@ -115,6 +116,7 @@ class Job:
             "started_at":   self.started_at,
             "completed_at": self.completed_at,
             "log_lines":    list(self.log_lines),
+            "user_id":      self.user_id,
         }
 
     @classmethod
@@ -132,6 +134,7 @@ class Job:
             started_at=d.get("started_at"),
             completed_at=d.get("completed_at"),
             log_lines=d.get("log_lines", []),
+            user_id=d.get("user_id"),
         )
 
 
@@ -283,6 +286,18 @@ class SimRunnerState:
         """Return a deep copy of current state safe for JSON serialisation."""
         with self._lock:
             return self._snapshot_unsafe()
+
+    def snapshot_for_user(self, user_id: int) -> dict:
+        """Return a snapshot filtered to only the requesting user's jobs."""
+        with self._lock:
+            snap = self._snapshot_unsafe()
+        snap["active_jobs"] = [j for j in snap["active_jobs"] if j.get("user_id") == user_id]
+        snap["results"] = [
+            r for r in snap["results"]
+            if r.get("latest", {}).get("user_id") == user_id
+        ]
+        snap["log"] = []
+        return snap
 
     def get_job(self, job_id: str) -> Job:
         """Return a copy of the job with *job_id*.  Raises :exc:`KeyError` if not found."""
