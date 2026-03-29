@@ -132,6 +132,12 @@ def get_user_by_username(username: str) -> dict | None:
     return dict(row) if row else None
 
 
+def get_all_users() -> list[dict]:
+    with _connect() as conn:
+        rows = conn.execute("SELECT id, username FROM users").fetchall()
+    return [dict(r) for r in rows]
+
+
 def get_user_by_id(user_id: int) -> dict | None:
     with _connect() as conn:
         row = conn.execute(
