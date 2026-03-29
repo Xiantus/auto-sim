@@ -61,6 +61,17 @@ app.permanent_session_lifetime = timedelta(days=30)
 
 db.init_db()
 
+# Regenerate SimdragosaData.lua for every user on startup so the file is
+# immediately up-to-date after a server update (schema migrations, format changes, etc.)
+def _regenerate_all_lua() -> None:
+    try:
+        for user in db.get_all_users():
+            _write_savedvariables(user["id"])
+    except Exception as exc:
+        log.warning("Startup Lua regeneration failed: %s", exc)
+
+threading.Thread(target=_regenerate_all_lua, daemon=True).start()
+
 # ---------------------------------------------------------------------------
 # Global run state
 # ---------------------------------------------------------------------------
