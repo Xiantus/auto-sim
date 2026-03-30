@@ -304,6 +304,8 @@ def load_tooltip_data_for_user(user_id: int) -> dict:
         else:                              diff_key = "champion"
 
         spec_name = r["spec"] or ""
+        if not spec_name:
+            continue
         result[key][item_id]["specs"].setdefault(spec_name, {})
         result[key][item_id]["specs"][spec_name][diff_key] = r["dps_gain"]
 

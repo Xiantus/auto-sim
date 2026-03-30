@@ -233,6 +233,8 @@ def _build_lua(user_id: int) -> str:
             # specs array — one entry per spec with its per-track gains
             lines.append("      specs = {")
             for spec_name, gains in sorted(info.get("specs", {}).items()):
+                if not spec_name:
+                    continue
                 spec_parts = [f'spec="{spec_name}"']
                 for diff_key in ("champion", "heroic", "mythic"):
                     if diff_key in gains:
