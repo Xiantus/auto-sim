@@ -3,6 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <title>Simdragosa</title>
+<link rel="icon" type="image/png" href="/static/simdragosa-icon.png">
 <style>
 :root {
   --bg:       #13131f;
@@ -209,7 +210,7 @@ input[type=checkbox]:indeterminate { accent-color: var(--accent); opacity: 0.6; 
 <body>
 
 <header>
-  <h1><img src="/static/simdragosa-logo.svg" alt="" style="height:38px;width:auto;vertical-align:middle;margin-right:6px;"> Simdragosa</h1>
+  <h1><img src="/static/simdragosa-icon.png" alt="" style="height:38px;width:auto;vertical-align:middle;margin-right:6px;"> Simdragosa</h1>
   <span id="sim-ready-badge" class="not-ready" onclick="toggleSettings()" title="Click to open Settings"><span class="dot"></span><span id="sim-ready-label">No raidsid</span></span>
   <span style="font-size:12px;color:var(--sub)">{{ session.username }}</span>
   <script>const _CURRENT_USER = {{ session.username | tojson }};</script>
