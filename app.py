@@ -32,6 +32,13 @@ from auth import auth_bp, require_login
 app = Flask(__name__)
 app.register_blueprint(auth_bp)
 
+# Suppress noisy health-check poll entries from the Werkzeug access log.
+logging.getLogger("werkzeug").addFilter(
+    type("_SkipStatusPoll", (logging.Filter,), {
+        "filter": lambda self, r: "/api/status" not in r.getMessage()
+    })()
+)
+
 CONFIG_PATH  = Path(__file__).parent / "config.json"
 RESULTS_PATH = Path(__file__).parent / "results.json"
 REPORT_URL   = RAIDBOTS_BASE + "/simbot/report/{sim_id}"
