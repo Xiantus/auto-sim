@@ -25,7 +25,6 @@ DIFF_LABELS: dict[str, str] = {
     "raid-normal":              "Normal",
     "raid-heroic":              "Heroic",
     "raid-mythic":              "Mythic",
-    "dungeon-mythic7":          "M+7",
     "dungeon-mythic10":         "M+10",
     "dungeon-mythic-weekly10":  "M+10 Vault",
 }

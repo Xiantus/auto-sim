@@ -73,15 +73,6 @@ DIFFICULTY_MAP: dict[str, dict[str, Any]] = {
         "instance_id": -91,
         "fight_style": "Patchwerk",
     },
-    "dungeon-mythic7": {
-        "upgradeLevel": 12798,          # Hero 6/6 — M+7 end-of-dungeon max ilvl
-        "levelSelectorSequence": 611,
-        "itemLevel": "Hero",
-        "season": "mid1",
-        "source": "M+7",
-        "instance_id": -1,
-        "fight_style": "Patchwerk",
-    },
     "dungeon-mythic10": {
         "upgradeLevel": 12806,          # Myth 6/6 — M+10 end-of-dungeon max ilvl
         "levelSelectorSequence": 612,

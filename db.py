@@ -32,9 +32,8 @@ def _migrate_tooltip_add_spec(conn) -> None:
     cols = [r[1] for r in conn.execute("PRAGMA table_info(tooltip_data)").fetchall()]
     if "spec" in cols:
         return  # already migrated
-    conn.executescript("""
-        ALTER TABLE tooltip_data RENAME TO tooltip_data_old;
-
+    conn.execute("ALTER TABLE tooltip_data RENAME TO tooltip_data_old")
+    conn.execute("""
         CREATE TABLE tooltip_data (
             item_id    INTEGER NOT NULL,
             user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -47,17 +46,18 @@ def _migrate_tooltip_add_spec(conn) -> None:
             item_name  TEXT,
             sim_date   TEXT    NOT NULL,
             PRIMARY KEY (item_id, user_id, char_name, difficulty, spec)
-        );
-
+        )
+    """)
+    conn.execute("""
         INSERT INTO tooltip_data
             (item_id, user_id, char_name, realm, spec, difficulty,
              dps_gain, ilvl, item_name, sim_date)
         SELECT item_id, user_id, char_name, realm, '' AS spec, difficulty,
                dps_gain, ilvl, item_name, sim_date
-        FROM tooltip_data_old;
-
-        DROP TABLE tooltip_data_old;
+        FROM tooltip_data_old
     """)
+    conn.execute("DELETE FROM tooltip_data WHERE spec = ''")
+    conn.execute("DROP TABLE tooltip_data_old")
 
 
 def init_db() -> None:
@@ -285,6 +285,10 @@ def load_tooltip_data_for_user(user_id: int) -> dict:
         result.setdefault(key, {})
         item_id = r["item_id"]
 
+        spec_name = r["spec"] or ""
+        if not spec_name:
+            continue
+
         if item_id not in result[key]:
             result[key][item_id] = {
                 "ilvl":    r["ilvl"],
@@ -292,6 +296,8 @@ def load_tooltip_data_for_user(user_id: int) -> dict:
                 "updated": r["sim_date"],
                 "specs":   {},   # {spec_name: {diff_key: dps_gain}}
             }
+        elif r["sim_date"] > result[key][item_id]["updated"]:
+            result[key][item_id]["updated"] = r["sim_date"]
 
         # Derive track label from ilvl (ground truth) with difficulty fallback
         ilvl = r["ilvl"]
@@ -302,10 +308,6 @@ def load_tooltip_data_for_user(user_id: int) -> dict:
         elif "heroic" in r["difficulty"]:  diff_key = "heroic"
         elif "mythic" in r["difficulty"]:  diff_key = "mythic"
         else:                              diff_key = "champion"
-
-        spec_name = r["spec"] or ""
-        if not spec_name:
-            continue
         result[key][item_id]["specs"].setdefault(spec_name, {})
         result[key][item_id]["specs"][spec_name][diff_key] = r["dps_gain"]
 
