@@ -299,7 +299,10 @@ input[type=checkbox]:indeterminate { accent-color: var(--accent); opacity: 0.6; 
   <!-- Right: Run + Results -->
   <div class="right">
     <div class="run-section">
-      <h2>Run</h2>
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+        <h2 style="margin-bottom:0">Run</h2>
+        <button id="select-all-btn" onclick="toggleSelectAll()" style="background:none;border:1px solid var(--border);border-radius:6px;padding:3px 10px;font-size:11px;color:var(--sub);cursor:pointer">Select All</button>
+      </div>
       <div id="char-selector"></div>
       <div class="run-controls">
         <button id="go-btn" onclick="startRun()">GO</button>
@@ -477,7 +480,7 @@ const jobLogOpen   = new Set();  // Per-job log panels
 
 const DIFF_ORDER = [
   'raid-normal','raid-heroic','raid-mythic',
-  'dungeon-mythic7','dungeon-mythic10','dungeon-mythic-weekly10',
+  'dungeon-mythic10','dungeon-mythic-weekly10',
 ];
 
 /** Group an array of chars by lowercased name → Map<name, char[]> */
@@ -661,7 +664,6 @@ const DPS_DIFFS = [
   { value: 'raid-normal',             label: 'Normal',     checked: false },
   { value: 'raid-heroic',             label: 'Heroic',     checked: true  },
   { value: 'raid-mythic',             label: 'Mythic',     checked: true  },
-  { value: 'dungeon-mythic7',         label: 'M+7',        checked: false },
   { value: 'dungeon-mythic10',        label: 'M+10',       checked: false },
   { value: 'dungeon-mythic-weekly10', label: 'M+10 Vault', checked: false },
 ];
@@ -763,6 +765,17 @@ function onSpecCbChange(key) {
   updateGoBtn();
 }
 
+function toggleSelectAll() {
+  const charCbs  = [...document.querySelectorAll('.char-cb')];
+  const groupCbs = [...document.querySelectorAll('.group-cb')];
+  const allChecked = charCbs.every(cb => cb.checked);
+  const newState = !allChecked;
+  charCbs.forEach(cb => { cb.checked = newState; });
+  groupCbs.forEach(cb => { cb.checked = newState; cb.indeterminate = false; });
+  document.getElementById('select-all-btn').textContent = newState ? 'Deselect All' : 'Select All';
+  updateGoBtn();
+}
+
 function updateGoBtn() {
   const anySelected = [...document.querySelectorAll('.char-cb:checked')].some(cb => {
     const id   = cb.dataset.id;
@@ -772,6 +785,12 @@ function updateGoBtn() {
   });
   const anyGroupSelected = [...document.querySelectorAll('.group-cb:checked')].length > 0;
   document.getElementById('go-btn').disabled = !(anySelected || anyGroupSelected);
+
+  const charCbs = [...document.querySelectorAll('.char-cb')];
+  const btn = document.getElementById('select-all-btn');
+  if (btn && charCbs.length) {
+    btn.textContent = charCbs.every(cb => cb.checked) ? 'Deselect All' : 'Select All';
+  }
 }
 
 // ── SimC parser ───────────────────────────────────────────────────────────────
